@@ -2,9 +2,14 @@ import 'dart:io'; // Import to check platform
 import 'package:get_storage/get_storage.dart';
 
 class ApiRoutes {
-  static final storage = GetStorage();
+  static final GetStorage _storage = GetStorage();
+  static String get BASE_URL {
+    return _storage.read('baseUrl') ??
+        (Platform.isAndroid
+            ? "http://192.168.1.6:8000"
+            : "http://192.168.1.6:8000");
+  }
 
-  static final BASE_URL = Platform.isAndroid ? "http://10.0.2.2:8000" : "http://localhost:8000";
   // static final BASE_URL = Platform.isAndroid ? "https://imisbeta.hib.gov.np" : "https://imisbeta.hib.gov.np";
   static const _API = "/api/membership";
   static const APP_CONFIG = "$_API/config";
@@ -34,4 +39,3 @@ class ApiRoutes {
   static const EXECUTE_PAYMENT = "$_API/execute-payment/";
   static const PAYMENT_COMPLETE = "$_API/payment/complete/";
 }
-

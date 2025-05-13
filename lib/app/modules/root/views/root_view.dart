@@ -14,6 +14,8 @@ import '../../policy/views/policy_view.dart';
 import '../../search/views/search_view.dart';
 import '../controllers/root_controller.dart';
 import 'widgets/menu_view.dart';
+import '../../settings/views/settings_view.dart';
+
 class RootView extends GetView<RootController> {
   const RootView({Key? key}) : super(key: key);
 
@@ -22,12 +24,12 @@ class RootView extends GetView<RootController> {
     Get.put(AuthController());
     return Scaffold(
       drawer: Drawer(
-        width: 0.65.sw,
+        width: 0.85.sw,
         child: const MenuView(),
       ),
       drawerEdgeDragWidth: 0.0,
       body: Obx(
-            () {
+        () {
           return controller.configStatus.when(
             idle: () => Container(),
             success: (data) => AnnotatedRegion<SystemUiOverlayStyle>(
@@ -90,7 +92,6 @@ class RootView extends GetView<RootController> {
     return _getDefaultNavBarScreens();
   }
 
-
   List<Widget> _getInsureeNavBarScreens() {
     return [
       HomeView(),
@@ -100,7 +101,6 @@ class RootView extends GetView<RootController> {
       //SearchView(),
     ];
   }
-
 
   List<Widget> _getOfficerNavBarScreens() {
     return [
@@ -126,19 +126,18 @@ class RootView extends GetView<RootController> {
       _getNavBarItem(
         "Home",
         HeroIcons.home,
-            () => controller.onHomeDoubleClick(),
+        () => controller.onHomeDoubleClick(),
       ),
       _getNavBarItem(
         "Family",
         HeroIcons.users,
-            () => controller.onSearchDoubleClick(),
+        () => controller.onSearchDoubleClick(),
       ),
       _getNavBarItem(
         "Claims",
         HeroIcons.bars3,
-            () => controller.onSearchDoubleClick(),
+        () => controller.onSearchDoubleClick(),
       )
-
     ];
   }
 
@@ -147,22 +146,22 @@ class RootView extends GetView<RootController> {
       _getNavBarItem(
         "Search",
         HeroIcons.magnifyingGlass,
-            () => controller.onSearchDoubleClick(),
+        () => controller.onSearchDoubleClick(),
       ),
       _getNavBarItem(
         "Enrollment",
         HeroIcons.userGroup,
-            () => controller.onSearchDoubleClick(),
+        () => controller.onSearchDoubleClick(),
       ),
       _getNavBarItem(
         "Policy",
         HeroIcons.identification,
-            () => controller.onSearchDoubleClick(),
+        () => controller.onSearchDoubleClick(),
       ),
       _getNavBarItem(
         "Search Insuree",
         HeroIcons.magnifyingGlass,
-            () => controller.onSearchDoubleClick(),
+        () => controller.onSearchDoubleClick(),
       ),
     ];
   }
@@ -177,36 +176,36 @@ class RootView extends GetView<RootController> {
     ];
   }
 
-
   List<PersistentBottomNavBarItem> _getDefaultNavBarItems() {
     return [
       _getNavBarItem(
         "Home",
         HeroIcons.home,
-            () => controller.onHomeDoubleClick(),
+        () => controller.onHomeDoubleClick(),
       ),
       _getNavBarItem(
         "Search",
         HeroIcons.magnifyingGlass,
-            () => controller.onSearchDoubleClick(),
+        () => controller.onSearchDoubleClick(),
       ),
       _getNavBarItem(
         "Policy",
         HeroIcons.identification,
-            () => controller.onSearchDoubleClick(),
+        () => controller.onSearchDoubleClick(),
       ),
       _getNavBarItem(
         "Search Insuree",
         HeroIcons.magnifyingGlass,
-            () => controller.onSearchDoubleClick(),
+        () => controller.onSearchDoubleClick(),
       ),
     ];
   }
+
   PersistentBottomNavBarItem _getNavBarItem(
-      String title,
-      HeroIcons icon,
-      void Function() onDoubleTap,
-      ) {
+    String title,
+    HeroIcons icon,
+    void Function() onDoubleTap,
+  ) {
     return PersistentBottomNavBarItem(
       icon: HeroIcon(icon),
       title: title,
@@ -220,4 +219,3 @@ class RootView extends GetView<RootController> {
     );
   }
 }
-

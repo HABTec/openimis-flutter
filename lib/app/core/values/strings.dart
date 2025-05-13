@@ -9,6 +9,7 @@ class AppStrings {
       "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor";
   static const loginBtn = "LOGIN";
   static const signup = "Sign up";
+  static const signupTryAgain = "Try signing up again";
   static const youDoNotHaveAnAccountYet = "You don't have an account yet? ";
   static const emailHint = "Username";
   static const emailLabel = "Username";
@@ -41,7 +42,6 @@ class AppStrings {
   /*
   * Choose Screen Strings
   * */
-
 
 /*
 * Waiting Screen Strings

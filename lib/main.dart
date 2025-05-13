@@ -5,6 +5,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
+import 'package:khalti_flutter/khalti_flutter.dart';
 import 'package:openimis_app/app/language/languages.dart';
 import 'package:openimis_app/app/modules/root/controllers/root_controller.dart';
 import 'dart:io'; // To check the platform
@@ -23,7 +24,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 
 // Initialize local notifications plugin
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-FlutterLocalNotificationsPlugin();
+    FlutterLocalNotificationsPlugin();
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
@@ -33,10 +34,12 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   setupLocator();
-  Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  Future<void> _firebaseMessagingBackgroundHandler(
+      RemoteMessage message) async {
     await Firebase.initializeApp();
     print("Handling a background message: ${message.messageId}");
   }
+
   // Firebase initialization
   if (Platform.isAndroid) {
     await Firebase.initializeApp();
@@ -51,9 +54,9 @@ void main() async {
   final authController = Get.put(AuthController());
   // Local Notifications Setup
   const AndroidInitializationSettings initializationSettingsAndroid =
-  AndroidInitializationSettings('@mipmap/ic_launcher');
+      AndroidInitializationSettings('@mipmap/ic_launcher');
   const InitializationSettings initializationSettings =
-  InitializationSettings(android: initializationSettingsAndroid);
+      InitializationSettings(android: initializationSettingsAndroid);
 
   if (!Platform.isIOS) {
     await flutterLocalNotificationsPlugin.initialize(initializationSettings);
@@ -85,75 +88,82 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-
   final rootController = Get.put(RootController());
   await Future.delayed(Duration(milliseconds: 100));
   await rootController.fetchConfigurations(); // Fetch configurations here
   await rootController.fetchSupportedPartners();
 
   runApp(
-    ScreenUtilInit(
-      designSize: const Size(375, 812),
-      minTextAdapt: true,
-      splitScreenMode: true,
-      builder: (_, child) =>
-          GetMaterialApp(
-            translations: Languages(),
-            fallbackLocale: const Locale('en', 'US'),
-            locale: languageService.currentLocale ?? const Locale('en', 'US'),
-            debugShowCheckedModeBanner: false,
-            initialBinding: AuthBinding(),
-            home: Obx(
-                  () {
-                if (rootController.configurationStatus.value ==
-                    Status.loading) {
-                  return const Scaffold(
-                    body: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          CircularProgressIndicator(),
-                          SizedBox(height: 16),
-                          Text("Fetching configurations..."),
-                        ],
+    KhaltiScope(
+        publicKey: 'test_public_key_dc65060e070640009301000000000000',
+        builder: (context, navigatorKey) {
+          return ScreenUtilInit(
+            designSize: const Size(375, 812),
+            minTextAdapt: true,
+            splitScreenMode: true,
+            builder: (_, child) => GetMaterialApp(
+              navigatorKey: navigatorKey,
+              translations: Languages(),
+              supportedLocales: const [
+                Locale('en', 'US'),
+                Locale('ne', 'NP'),
+              ],
+              localizationsDelegates: const [KhaltiLocalizations.delegate],
+              fallbackLocale: const Locale('en', 'US'),
+              locale: languageService.currentLocale ?? const Locale('en', 'US'),
+              debugShowCheckedModeBanner: false,
+              initialBinding: AuthBinding(),
+              home: Obx(
+                () {
+                  if (rootController.configurationStatus.value ==
+                      Status.loading) {
+                    return const Scaffold(
+                      body: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(height: 16),
+                            Text("Fetching configurations..."),
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                }
+                    );
+                  }
 
-                // Show the main app views after loading is complete
-                return AuthController.to.currentUser != null
-                    ? const RootView()
-                    : const LoginView();
-              },
+                  // Show the main app views after loading is complete
+                  return AuthController.to.currentUser != null
+                      ? const RootView()
+                      : const LoginView();
+                },
+              ),
+              getPages: AppPages.routes,
+              theme: themeService.isDarkTheme.value
+                  ? AppTheme.darkTheme
+                  : AppTheme.lightTheme,
+              defaultTransition: Transition.cupertino,
             ),
-            getPages: AppPages.routes,
-            theme: themeService.isDarkTheme.value
-                ? AppTheme.darkTheme
-                : AppTheme.lightTheme,
-            defaultTransition: Transition.cupertino,
-            localizationsDelegates: [
-            ],
-          ),
-    ),
+          );
+        }),
   );
 }
-  void _showLocalNotification(RemoteMessage message) async {
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'default_channel_id',
-      'Default Channel',
-      channelDescription: 'This is the default channel',
-      importance: Importance.max,
-      priority: Priority.high,
-    );
 
-    const NotificationDetails notificationDetails =
-    NotificationDetails(android: androidDetails);
+void _showLocalNotification(RemoteMessage message) async {
+  const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+    'default_channel_id',
+    'Default Channel',
+    channelDescription: 'This is the default channel',
+    importance: Importance.max,
+    priority: Priority.high,
+  );
 
-    await flutterLocalNotificationsPlugin.show(
-      0,
-      message.notification?.title,
-      message.notification?.body,
-      notificationDetails,
-    );
+  const NotificationDetails notificationDetails =
+      NotificationDetails(android: androidDetails);
+
+  await flutterLocalNotificationsPlugin.show(
+    0,
+    message.notification?.title,
+    message.notification?.body,
+    notificationDetails,
+  );
 }

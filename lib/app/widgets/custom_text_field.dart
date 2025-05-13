@@ -99,7 +99,7 @@ class CustomTextField extends StatelessWidget {
           IntlPhoneField(
             controller: controller,
             autofocus: autofocus,
-            initialCountryCode: "NP",
+            initialCountryCode: "ET",
             style: GoogleFonts.poppins(
               fontSize: 13.sp,
               fontWeight: FontWeight.w400,
@@ -127,48 +127,47 @@ class CustomTextField extends StatelessWidget {
             keyboardType: isEmailField
                 ? TextInputType.emailAddress
                 : isSearchBar
-                ? TextInputType.text
-                : textInputType,
+                    ? TextInputType.text
+                    : textInputType,
             obscureText: obscureText,
             enableSuggestions: !isPassword,
             autocorrect: !isPassword,
             decoration: InputDecoration(
               hintText: hintText,
-              contentPadding: isSearchBar
-                  ? EdgeInsets.symmetric(vertical: 10.w)
-                  : null,
+              contentPadding:
+                  isSearchBar ? EdgeInsets.symmetric(vertical: 10.w) : null,
               suffixIcon: suffixIcon != null
                   ? IconButton(
-                splashColor: Colors.transparent,
-                highlightColor: Colors.transparent,
-                onPressed: onSuffixTap ?? () {},
-                icon: HeroIcon(
-                  suffixIcon!,
-                  size: suffixIconSize,
-                  color: suffixIconColor,
-                ),
-              )
+                      splashColor: Colors.transparent,
+                      highlightColor: Colors.transparent,
+                      onPressed: onSuffixTap ?? () {},
+                      icon: HeroIcon(
+                        suffixIcon!,
+                        size: suffixIconSize,
+                        color: suffixIconColor,
+                      ),
+                    )
                   : null,
               prefixIcon: prefixIcon != null
                   ? IconButton(
-                onPressed: () {},
-                icon: HeroIcon(
-                  prefixIcon!,
-                  size: prefixIconSize,
-                  color: suffixIconColor,
-                ),
-              )
+                      onPressed: () {},
+                      icon: HeroIcon(
+                        prefixIcon!,
+                        size: prefixIconSize,
+                        color: suffixIconColor,
+                      ),
+                    )
                   : null,
             ),
             validator: isEmailField
                 ? (value) {
-              // Basic email validation logic
-              final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+');
-              if (value == null || !emailRegex.hasMatch(value)) {
-                return 'Please enter a valid email address';
-              }
-              return null;
-            }
+                    // Basic email validation logic
+                    final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+');
+                    if (value == null || !emailRegex.hasMatch(value)) {
+                      return 'Please enter a valid email address';
+                    }
+                    return null;
+                  }
                 : validator,
             autovalidateMode: AutovalidateMode.onUserInteraction,
             autofocus: autofocus,

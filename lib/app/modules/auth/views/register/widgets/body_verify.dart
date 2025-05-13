@@ -49,7 +49,22 @@ class BodyVerify extends GetView<AuthController> {
                         Colors.white), // Set color for indicator
                   ),
                 ),
-                failure: (reason) => Text("Error: $reason"),
+                failure: (reason) => Column(
+                  children: [
+                    ButtonWithText(
+                        btnLabel: AppStrings.signupTryAgain,
+                        firstTextSpan: AppStrings.signIn,
+                        secondTextSpan: AppStrings.signIn,
+                        onTap: () async {
+                          controller.verifyInsuree();
+                        },
+                        onTextTap: () {
+                          Get.toNamed('/login');
+                        }),
+                    SizedBox(height: 10.h),
+                    Text("Error: $reason"),
+                  ],
+                ),
                 success: (data) {
                   Timer(Duration(seconds: 1), () {
                     Get.toNamed(Routes

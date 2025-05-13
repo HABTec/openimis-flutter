@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
+import 'package:heroicons/heroicons.dart';
+import 'package:openimis_app/app/modules/settings/views/settings_view.dart';
 
 import '../../../../language/view/language_choose_bottomsheet.dart';
 import '../../controllers/auth_controller.dart';
@@ -32,6 +35,23 @@ class LoginView extends GetView<AuthController> {
           toolbarHeight: kToolbarHeight,
           automaticallyImplyLeading: false,
           actions: [
+            IconButton(
+              onPressed: () => Get.to(() => SettingsView()),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.white.withOpacity(0.2),
+                padding: EdgeInsets.all(6.w),
+                minimumSize: Size.zero,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.r),
+                ),
+              ),
+              icon: HeroIcon(
+                HeroIcons.cog6Tooth,
+                color: Get.theme.primaryColor,
+              ),
+            ),
             IconButton(
               onPressed: () {
                 showLanguageSelectionBottomSheet(context);
