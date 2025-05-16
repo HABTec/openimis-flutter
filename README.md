@@ -69,8 +69,6 @@ It's built with the following technologies:
 
 _To get a local copy up and running follow these simple steps._
 
-Thanks! Here is the updated **README** section with all your additions, formatted using **hashtags for headings** and **underscores** for emphasis or inline commands, just as you requested:
-
 ---
 
 # Prerequisites
