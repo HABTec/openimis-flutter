@@ -69,12 +69,68 @@ It's built with the following technologies:
 
 _To get a local copy up and running follow these simple steps._
 
-### Prerequisites
+---
 
-_Make sure you have Flutter installed on your machine. If not, follow the instructions on the
-official Flutter website._
+# Prerequisites
 
-### Installation
+Make sure you have the following installed and configured on your machine:
+
+* ## *Flutter*
+
+  The project has been tested and works with *Flutter versions 3.7.12* and *3.12.0*.
+  Using these specific versions is *recommended* to avoid compatibility issues with older Flutter repositories.
+
+* ## *Gradle*
+
+  Use *Gradle 7.4* for building the project, as it has been proven to work reliably.
+
+* ## *Backend Server*
+
+  Ensure your backend server is running on *0.0.0.0:8000* (or another port if preferred).
+  Start the server using the command:
+
+  ```
+  python manage.py runserver 0.0.0.0:8000
+  ```
+
+* ## *Network Configuration*
+
+  * You **must be on the same network** as the backend server for your device to connect successfully.
+
+  * On *Linux*, find your IP address by running:
+
+    ```
+    ifconfig
+    ```
+
+  * On *Windows*, run:
+
+    ```
+    ipconfig
+    ```
+
+  * *Note*: Sometimes your IP address may not be accessible outside the machine due to firewall restrictions. To fix this, you may need to *expose the port* by running:
+
+    ```
+    sudo ufw allow 8000
+    ```
+
+    Then reload the firewall settings with:
+
+    ```
+    sudo ufw reload
+    ```
+
+  * To **verify the connection**, open a browser on your phone or another device connected to the *same network*, and navigate to:
+
+    ```
+    http://<your_computer_ip>:8000
+    ```
+
+    If you see the list of available endpoints, your setup is working correctly.
+
+---
+
 
 1. Download or clone this repo by using the link below:
 
