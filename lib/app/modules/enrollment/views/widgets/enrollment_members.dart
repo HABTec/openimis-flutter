@@ -237,8 +237,8 @@ class EnrollmentDetailsPage extends StatelessWidget {
                               icon: Icon(Icons.delete_outline),
                               color: Colors
                                   .red, // Set the color of the delete button to red
-                              onPressed: () async {
-                                await enrollmentController
+                              onPressed: () {
+                                enrollmentController
                                     .deleteFamilyMember(member['id']);
                               },
                             ),

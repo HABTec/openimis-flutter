@@ -153,3 +153,74 @@ LinkedIn: [https://www.linkedin.com/in/sunil-parajuli-a49102b7/)
 [Hero Icons]: https://img.shields.io/badge/Hero_Icons-0175C2?style=for-the-badge&logo=heroicons&logoColor=white
 
 [Hero Icons-url]: https://heroicons.com/
+
+# OpenIMIS Enrollment App
+
+A Flutter application for Community Based Health Insurance (CBHI) enrollment with enhanced QR code functionality.
+
+## Features
+
+### QR Card Download & Share ✨
+
+The app now includes comprehensive QR code functionality:
+
+**Download QR Card:**
+- High-quality PNG export (3x pixel ratio for crisp images)
+- Automatic file saving to dedicated CBHI_Cards folder
+- Android: External storage with custom folder structure
+- iOS: Documents directory for easy access
+- Timestamped filenames to prevent conflicts
+- Success notifications with file path display
+
+**Share QR Card:**
+- Native sharing integration using share_plus
+- Temporary file creation for sharing
+- Customizable share text with member details
+- Support for all platforms (WhatsApp, Email, etc.)
+- Professional loading dialogs during processing
+
+**QR Code Features:**
+- Contains member information (CHFID, name, status, enrollment date)
+- JSON format for easy scanning and processing
+- Ethiopian Health Insurance Agency branding
+- Professional card design with member details
+- Active status indicators
+
+**Required Permissions:**
+- Storage permissions for file saving
+- External storage access for Android
+- Automatic permission handling with user prompts
+
+## Technical Implementation
+
+The QR card functionality uses the following packages:
+- `screenshot`: For capturing widget as image
+- `share_plus`: For native sharing capabilities
+- `path_provider`: For cross-platform file system access
+- `permission_handler`: For runtime permissions
+- `qr_flutter`: For QR code generation
+
+## Usage
+
+1. Complete the enrollment process
+2. Navigate to the QR card view after successful payment
+3. Use "Download Membership Card" to save locally
+4. Use "Share Card" to share via installed apps
+5. Present QR code at healthcare facilities
+
+## Development
+
+This project uses:
+- Flutter SDK >=2.18.0 <3.0.0
+- GetX for state management
+- Responsive UI with ScreenUtil
+- Modern Material Design theming
+
+## Benefits
+
+- **Offline Access**: Downloaded cards work without internet
+- **Easy Sharing**: Quick distribution to family members
+- **Professional Appearance**: Official-looking membership cards
+- **Data Security**: QR codes contain only necessary information
+- **Cross-Platform**: Works on Android and iOS
+- **User-Friendly**: Intuitive download and share process
