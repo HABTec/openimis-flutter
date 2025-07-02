@@ -23,7 +23,9 @@ class EnrollmentDto implements IDto {
     this.confirmationNumber,
     this.addressDetail,
     this.family,
-    this.relationShip
+    this.relationShip,
+    this.disabilityStatus,
+    this.syncStatus = 0,
   });
 
   EnrollmentDto.fromJson(Map<String, dynamic> json) {
@@ -48,6 +50,8 @@ class EnrollmentDto implements IDto {
     confirmationNumber = json['confirmationNumber'];
     addressDetail = json['addressDetail'];
     relationShip = json['relationShip'];
+    disabilityStatus = json['disabilityStatus'];
+    syncStatus = json['syncStatus'] ?? 0;
 
     family = json['family'] != null ? Family.fromJson(json['family']) : null;
   }
@@ -73,7 +77,9 @@ class EnrollmentDto implements IDto {
   String? confirmationNumber;
   String? addressDetail;
   Family? family;
-  String ? relationShip;
+  String? relationShip;
+  String? disabilityStatus; // None, Physical, Visual, Hearing, Mental, Other
+  int? syncStatus; // 0 = not synced, 1 = synced
 
   EnrollmentDto copyWith({
     String? chfid,
@@ -97,7 +103,9 @@ class EnrollmentDto implements IDto {
     String? confirmationNumber,
     String? addressDetail,
     Family? family,
-    String ? relationShip
+    String? relationShip,
+    String? disabilityStatus,
+    int? syncStatus,
   }) =>
       EnrollmentDto(
         chfid: chfid ?? this.chfid,
@@ -122,6 +130,8 @@ class EnrollmentDto implements IDto {
         addressDetail: addressDetail ?? this.addressDetail,
         relationShip: relationShip ?? this.relationShip,
         family: family ?? this.family,
+        disabilityStatus: disabilityStatus ?? this.disabilityStatus,
+        syncStatus: syncStatus ?? this.syncStatus,
       );
 
   Map<String, dynamic> toJson() {
@@ -147,6 +157,8 @@ class EnrollmentDto implements IDto {
     map['confirmationNumber'] = confirmationNumber;
     map['addressDetail'] = addressDetail;
     map['relationShip'] = relationShip;
+    map['disabilityStatus'] = disabilityStatus;
+    map['syncStatus'] = syncStatus;
     if (family != null) {
       map['family'] = family!.toJson();
     }

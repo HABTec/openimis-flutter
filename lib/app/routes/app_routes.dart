@@ -14,6 +14,8 @@ abstract class Routes {
   static const OTP = _Paths.OTP;
   static const NOTICES = _Paths.NOTICES;
   static const PROFILE = _Paths.PROFILE;
+  static const ENROLLMENT = _Paths.ENROLLMENT;
+  static const ENROLLMENT_LIST = _Paths.ENROLLMENT_LIST;
 }
 
 abstract class _Paths {
@@ -24,6 +26,7 @@ abstract class _Paths {
   static const REGISTER = '/register';
   static const WAITTING = '/waiting';
   static const ENROLLMENT = '/enrollment';
+  static const ENROLLMENT_LIST = '/enrollment-list';
   static const PUBLIC_ENROLLMENT = '/public-enrollment';
   static const SEARCH = '/search';
   static const SAVED = '/saved';

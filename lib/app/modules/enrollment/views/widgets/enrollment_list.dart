@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:openimis_app/app/modules/enrollment/controller/enrollment_controller.dart';
+import 'enrollment_form.dart';
 
 class EnrollmentListPage extends StatelessWidget {
   final EnrollmentController controller = Get.put(EnrollmentController());
@@ -143,9 +144,12 @@ class EnrollmentListPage extends StatelessWidget {
                                     var k = enrollment['family']['id'];
                                     controller.familyId.value =
                                         enrollment['family']['id'];
-                                    controller.confirmAddMember(
-                                        enrollment['family']['id'],
-                                        enrollment['family']['chfid']);
+                                    // Navigate to enrollment form to add new member
+                                    Get.to(() => EnrollmentForm(
+                                          enrollmentId: enrollment['family']
+                                              ['id'],
+                                          chfid: enrollment['family']['chfid'],
+                                        ));
                                   },
                                 ),
                               ],

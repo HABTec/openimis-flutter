@@ -22,12 +22,18 @@ class AppTheme {
   static Color darkTextColor = const Color(0xffE94560);
   static Color darkHintColor = const Color(0xff6B7280);
 
+  // Define custom colors
+  static const Color primaryColor = Color(0xFF036273);
+  static const Color secondaryColor = Color(0xFFB7D3D7);
+  static const Color surfaceColor = Color(0xFFF8FAFA);
+  static const Color onPrimaryColor = Colors.white;
+
   // Light Theme Configuration
   static final lightTheme = ThemeData(
     visualDensity: VisualDensity.adaptivePlatformDensity,
     brightness: Brightness.light,
     backgroundColor: backgroundColor,
-    primaryColor: blueColor,
+    primaryColor: primaryColor,
     hintColor: lightGrayColor,
     cardColor: whiteColor,
     errorColor: errorColor,
@@ -36,6 +42,19 @@ class AppTheme {
     elevatedButtonTheme: _lightElevatedButtonTheme,
     inputDecorationTheme: _inputDecorationTheme,
     useMaterial3: true,
+    appBarTheme: AppBarTheme(
+      backgroundColor: primaryColor,
+      foregroundColor: onPrimaryColor,
+      elevation: 0,
+      centerTitle: true,
+    ),
+    cardTheme: CardTheme(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      color: Colors.white,
+    ),
   );
 
   static final _lightTextTheme = TextTheme(
@@ -51,34 +70,30 @@ class AppTheme {
   );
 
   static final _lightColorScheme = ColorScheme.fromSeed(
-    seedColor: blueColor,
+    seedColor: primaryColor,
     brightness: Brightness.light,
     background: backgroundColor,
     onBackground: blackColor,
-    primary: blueColor,
+    primary: primaryColor,
     onPrimary: backgroundColor,
-    secondary: darkGrayColor,
+    secondary: secondaryColor,
     onSecondary: backgroundColor,
+    surface: surfaceColor,
   );
 
   static final _lightElevatedButtonTheme = ElevatedButtonThemeData(
     style: ElevatedButton.styleFrom(
-      backgroundColor: blueColor,
-      elevation: 10,
-      textStyle: _lightTextTheme.button,
-      shadowColor: blueColor.withOpacity(0.25),
-      foregroundColor: backgroundColor,
-      padding: EdgeInsets.all(16.w),
+      backgroundColor: primaryColor,
+      foregroundColor: onPrimaryColor,
+      padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14.r),
+        borderRadius: BorderRadius.circular(8),
       ),
-      disabledBackgroundColor: blueColor,
-      disabledForegroundColor: backgroundColor,
     ),
   );
 
   static final _inputDecorationTheme = InputDecorationTheme(
-    contentPadding: EdgeInsets.all(16.w),
+    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     hintStyle: _lightTextTheme.caption,
     errorStyle: _lightTextTheme.caption?.copyWith(
       color: errorColor,
@@ -90,19 +105,17 @@ class AppTheme {
     counterStyle: _lightTextTheme.caption?.copyWith(fontSize: 10.sp),
     suffixIconColor: darkGrayColor,
     prefixIconColor: lightGrayColor,
-    enabledBorder: _outlineInputBorder,
-    border: _outlineInputBorder,
-    focusedBorder: _outlineInputBorder,
-    errorBorder: _outlineInputBorder.copyWith(
-      borderSide: BorderSide(color: errorColor),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: BorderSide(color: secondaryColor),
     ),
-  );
-
-  static final _outlineInputBorder = OutlineInputBorder(
-    borderRadius: BorderRadius.circular(14.r),
-    borderSide: BorderSide(
-      color: blackColor.withOpacity(0.1),
-      width: 1.0,
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: BorderSide(color: secondaryColor),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: BorderSide(color: primaryColor, width: 2),
     ),
   );
 
@@ -111,7 +124,7 @@ class AppTheme {
     visualDensity: VisualDensity.adaptivePlatformDensity,
     brightness: Brightness.dark,
     backgroundColor: darkBackgroundColor,
-    primaryColor: darkPrimaryColor,
+    primaryColor: primaryColor,
     hintColor: darkHintColor,
     cardColor: darkCardColor,
     errorColor: errorColor,
@@ -120,6 +133,19 @@ class AppTheme {
     elevatedButtonTheme: _darkElevatedButtonTheme,
     inputDecorationTheme: _darkInputDecorationTheme,
     useMaterial3: true,
+    appBarTheme: AppBarTheme(
+      backgroundColor: primaryColor,
+      foregroundColor: onPrimaryColor,
+      elevation: 0,
+      centerTitle: true,
+    ),
+    cardTheme: CardTheme(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      color: Color(0xFF2C2C2C),
+    ),
   );
 
   static final _darkTextTheme = TextTheme(
@@ -136,34 +162,30 @@ class AppTheme {
   );
 
   static final _darkColorScheme = ColorScheme.fromSeed(
-    seedColor: darkPrimaryColor,
+    seedColor: primaryColor,
     brightness: Brightness.dark,
     background: darkBackgroundColor,
     onBackground: darkTextColor,
-    primary: darkPrimaryColor,
+    primary: primaryColor,
     onPrimary: darkBackgroundColor,
-    secondary: darkGrayColor,
+    secondary: secondaryColor,
     onSecondary: darkBackgroundColor,
+    surface: Color(0xFF1E1E1E),
   );
 
   static final _darkElevatedButtonTheme = ElevatedButtonThemeData(
     style: ElevatedButton.styleFrom(
-      backgroundColor: darkPrimaryColor,
-      elevation: 10,
-      textStyle: _darkTextTheme.button,
-      shadowColor: darkPrimaryColor.withOpacity(0.25),
-      foregroundColor: darkBackgroundColor,
-      padding: EdgeInsets.all(16.w),
+      backgroundColor: primaryColor,
+      foregroundColor: onPrimaryColor,
+      padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14.r),
+        borderRadius: BorderRadius.circular(8),
       ),
-      disabledBackgroundColor: darkPrimaryColor,
-      disabledForegroundColor: darkBackgroundColor,
     ),
   );
 
   static final _darkInputDecorationTheme = InputDecorationTheme(
-    contentPadding: EdgeInsets.all(16.w),
+    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     hintStyle: _darkTextTheme.caption,
     errorStyle: _darkTextTheme.caption?.copyWith(
       color: errorColor,
@@ -175,19 +197,17 @@ class AppTheme {
     counterStyle: _darkTextTheme.caption?.copyWith(fontSize: 10.sp),
     suffixIconColor: darkHintColor,
     prefixIconColor: darkGrayColor,
-    enabledBorder: _darkOutlineInputBorder,
-    border: _darkOutlineInputBorder,
-    focusedBorder: _darkOutlineInputBorder,
-    errorBorder: _darkOutlineInputBorder.copyWith(
-      borderSide: BorderSide(color: errorColor),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: BorderSide(color: secondaryColor.withOpacity(0.5)),
     ),
-  );
-
-  static final _darkOutlineInputBorder = OutlineInputBorder(
-    borderRadius: BorderRadius.circular(14.r),
-    borderSide: BorderSide(
-      color: darkGrayColor.withOpacity(0.1),
-      width: 1.0,
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: BorderSide(color: secondaryColor.withOpacity(0.5)),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: BorderSide(color: primaryColor, width: 2),
     ),
   );
 }

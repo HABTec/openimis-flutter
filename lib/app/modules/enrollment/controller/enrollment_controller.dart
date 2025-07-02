@@ -10,6 +10,7 @@ import 'package:openimis_app/app/data/remote/repositories/enrollment/enrollment_
 import 'package:openimis_app/app/modules/enrollment/controller/LocationDto.dart';
 import 'package:openimis_app/app/modules/enrollment/controller/MembershipDto.dart';
 import 'package:openimis_app/app/modules/policy/views/widgets/qr_view.dart';
+import 'package:openimis_app/app/data/remote/services/payment/arifpay_service.dart';
 
 import '../../../data/remote/base/status.dart';
 import '../../../di/locator.dart';
@@ -20,15 +21,93 @@ import '../views/widgets/enrollment_form.dart';
 import '../views/widgets/enrollment_members.dart';
 import '../views/widgets/qr_view.dart';
 import '../views/widgets/submit_botton_sheet.dart';
+import '../views/widgets/payment_view.dart';
+import '../views/widgets/receipt_view.dart';
+import '../views/widgets/qr_card_view.dart';
 import 'DropdownDto.dart';
 import 'EnrollmentDto.dart';
 import 'HospitalDto.dart';
 
-class EnrollmentController extends GetxController with SingleGetTickerProviderMixin {
+// Family Member Model
+class FamilyMember {
+  String chfid;
+  String firstName;
+  String lastName;
+  String gender;
+  String birthdate;
+  String phone;
+  String email;
+  String identificationNo;
+  String maritalStatus;
+  String relationship;
+  String disabilityStatus;
+  bool isHead;
+  String? photoPath;
+
+  FamilyMember({
+    required this.chfid,
+    required this.firstName,
+    required this.lastName,
+    required this.gender,
+    required this.birthdate,
+    required this.phone,
+    required this.email,
+    required this.identificationNo,
+    required this.maritalStatus,
+    required this.relationship,
+    required this.disabilityStatus,
+    required this.isHead,
+    this.photoPath,
+  });
+
+  String get fullName => '$firstName $lastName';
+
+  Map<String, dynamic> toJson() {
+    return {
+      'chfid': chfid,
+      'firstName': firstName,
+      'lastName': lastName,
+      'gender': gender,
+      'birthdate': birthdate,
+      'phone': phone,
+      'email': email,
+      'identificationNo': identificationNo,
+      'maritalStatus': maritalStatus,
+      'relationship': relationship,
+      'disabilityStatus': disabilityStatus,
+      'isHead': isHead,
+      'photoPath': photoPath,
+    };
+  }
+
+  factory FamilyMember.fromJson(Map<String, dynamic> json) {
+    return FamilyMember(
+      chfid: json['chfid'] ?? '',
+      firstName: json['firstName'] ?? '',
+      lastName: json['lastName'] ?? '',
+      gender: json['gender'] ?? '',
+      birthdate: json['birthdate'] ?? '',
+      phone: json['phone'] ?? '',
+      email: json['email'] ?? '',
+      identificationNo: json['identificationNo'] ?? '',
+      maritalStatus: json['maritalStatus'] ?? '',
+      relationship: json['relationship'] ?? '',
+      disabilityStatus: json['disabilityStatus'] ?? '',
+      isHead: json['isHead'] ?? false,
+      photoPath: json['photoPath'],
+    );
+  }
+}
+
+class EnrollmentController extends GetxController
+    with SingleGetTickerProviderMixin {
   final GlobalKey<FormState> enrollmentFormKey = GlobalKey<FormState>();
-  final GetStorage _storage = GetStorage(); // Use GetStorage for local storage
+  final GetStorage _storage = GetStorage();
 
   final _enrollmentRepository = getIt.get<EnrollmentRepository>();
+  final _arifpayService = ArifPayService();
+
+  // Form controllers
   final chfidController = TextEditingController();
   final eaCodeController = TextEditingController();
   final lastNameController = TextEditingController();
@@ -38,41 +117,69 @@ class EnrollmentController extends GetxController with SingleGetTickerProviderMi
   final identificationNoController = TextEditingController();
   final birthdateController = TextEditingController();
   final headChfidController = TextEditingController();
+
+  // Form observable variables
   var gender = ''.obs;
   var maritalStatus = ''.obs;
   var relationShip = ''.obs;
+  var disabilityStatus = ''.obs; // New disability status field
   var isHead = false.obs;
   var povertyStatus = false.obs;
   var newEnrollment = true.obs;
   var photo = Rx<XFile?>(null);
   var selectedTabIndex = 0.obs;
 
+  // Health facility fields - Kept for backward compatibility
   var selectedHealthFacilityLevel = ''.obs;
   var selectedHealthFacility = ''.obs;
+
+  // Membership Type & Level fields - Story 3 requirement
+  var membershipType = ''.obs; // 'Paying' or 'Indigent'
+  var membershipLevel = ''.obs; // 'Level 1', 'Level 2', or 'Level 3'
+
   var selectedFamilyType = ''.obs;
   var selectedConfirmationType = ''.obs;
-  final  confirmationNumber = TextEditingController();
-  final  addressDetail = TextEditingController();
+  final confirmationNumber = TextEditingController();
+  final addressDetail = TextEditingController();
   var familyId = 0.obs;
-  /* member listing  */
-  var family = {}.obs; // Family data observable
-  var members = <Map<String, dynamic>>[].obs; // Members list observable
-  var voucherNumber = ''.obs;
-  var isLoading = false.obs; // Loading state
-  var errorMessage = ''.obs; // Error message state
 
+  // Member listing
+  var family = {}.obs;
+  var members = <Map<String, dynamic>>[].obs;
+  var familyMembers = <FamilyMember>[].obs; // Enhanced family member list
+  var voucherNumber = ''.obs;
+  var isLoading = false.obs;
+  var errorMessage = ''.obs;
+
+  // Payment related
+  var currentPaymentSession = Rxn<PaymentInitiationResponse>();
+  var paymentStatus = ''.obs;
+  var paymentAmount = 150.0.obs; // Mock contribution amount
+  var receiptData = Rxn<PaymentVerificationResponse>();
+
+  // Sync status
+  var syncStatus = 0.obs; // 0 = not synced, 1 = synced
+
+  // Disability options
+  final List<String> disabilityOptions = [
+    'None',
+    'Physical',
+    'Visual',
+    'Hearing',
+    'Mental',
+    'Other'
+  ];
 
   final _enrollmentScrollController = ScrollController();
   final Rx<Status<EnrollmentDto>> _rxEnrollmentState = Rx(const Status.idle());
-
-  Status<EnrollmentDto> get enrollmentState => _rxEnrollmentState.value;
-
   final Rx<Status<MemberShipCard>> _rxMemberShipCard = Rx(const Status.idle());
 
+  Status<EnrollmentDto> get enrollmentState => _rxEnrollmentState.value;
   Status<MemberShipCard> get membershipState => _rxMemberShipCard.value;
 
   ScrollController get enrollmentScrollController =>
       _enrollmentScrollController;
+
   final ImagePicker _picker = ImagePicker();
   var shouldHide = false.obs;
   bool dev = true;
@@ -80,11 +187,8 @@ class EnrollmentController extends GetxController with SingleGetTickerProviderMi
   var filteredEnrollments = <Map<String, dynamic>>[].obs;
   var searchText = ''.obs;
   var enrollments = <Map<String, dynamic>>[].obs;
-
-
   var selectedEnrollments = <int>[].obs;
   var isAllSelected = false.obs;
-
 
   void toggleSelectAll(bool selectAll) {
     isAllSelected.value = selectAll;
@@ -95,7 +199,6 @@ class EnrollmentController extends GetxController with SingleGetTickerProviderMi
       );
     }
   }
-
 
   Future<void> fetchEnrollmentDetails(int enrollmentId) async {
     try {
@@ -120,22 +223,21 @@ class EnrollmentController extends GetxController with SingleGetTickerProviderMi
     } else {
       selectedEnrollments.remove(id);
     }
-    isAllSelected.value = selectedEnrollments.length == filteredEnrollments.length;
+    isAllSelected.value =
+        selectedEnrollments.length == filteredEnrollments.length;
   }
 
-
-  final Rx<Status<List<LocationDto>>> _rxLocationState = Rx(const Status.idle());
+  // Location dropdowns
+  final Rx<Status<List<LocationDto>>> _rxLocationState =
+      Rx(const Status.idle());
+  final Rx<Status<List<HealthServiceProvider>>> _rxHospitalState =
+      Rx(const Status.idle());
 
   Status<List<LocationDto>> get locationState => _rxLocationState.value;
-
-  final Rx<Status<List<HealthServiceProvider>>> _rxHospitalState = Rx(const Status.idle());
-
-  Status<List<HealthServiceProvider>> get hospitalState => _rxHospitalState.value;
-
-
+  Status<List<HealthServiceProvider>> get hospitalState =>
+      _rxHospitalState.value;
 
   var selectedRegion = Rxn<LocationDto>();
-
   var selectedDistrict = Rxn<District>();
   var selectedMunicipality = Rxn<Municipality>();
   var selectedVillage = Rxn<Village>();
@@ -145,181 +247,95 @@ class EnrollmentController extends GetxController with SingleGetTickerProviderMi
   var villages = <Village>[].obs;
   late TabController tabController;
 
-
   @override
   void onInit() {
     super.onInit();
     tabController = TabController(length: 2, vsync: this);
-    tabController.addListener(() {
-      selectedTabIndex.value = tabController.index;
-    });
-    if (tabController.index == 1) {
-      getAllHospitals(); // Call this method when the second tab is selected
-    }
     fetchEnrollments();
-    getAllLocations();
-    //getAllHospitals();
-    fetchContributionRequirements();
-    if (dev) {
-      initializeDummyData();
-    }
-    ever(newEnrollment, handleNewEnrollmentChange);
-    debounce(searchText, (_) => filterEnrollments(),
-        time: Duration(milliseconds: 300));
-  }
-
-
-  var familyTypeCodes = <FamilyType>[].obs;
-  var confirmationTypes = <ConfirmationType>[].obs;
-
-
-
-  Future<void> fetchConfigData() async {
-    try {
-      final configData = await _storage.read('configurations') as Map<String, dynamic>?;
-      if (configData != null) {
-        // Retrieve family_type_codes
-        final familyTypes = configData['family_type_codes'] as Map<String, dynamic>;
-        familyTypeCodes.value = familyTypes.entries
-            .map((entry) => FamilyType(name: entry.key, code: entry.value))
-            .toList();
-
-        // Retrieve confirmation_types
-        final confirmationTypesData = configData['confirmation_types'] as Map<String, dynamic>;
-        confirmationTypes.value = confirmationTypesData.entries
-            .map((entry) => ConfirmationType(name: entry.key, code: entry.value))
-            .toList();
-      }
-    } catch (e) {
-      print('Error reading config data: $e');
-      familyTypeCodes.value = [];
-      confirmationTypes.value = [];
-    }
-  }
-
-
-
-  Future<void> getAllLocations() async {
-    final Status<List<LocationDto>> state = await _enrollmentRepository.getLocations();
-    state.whenOrNull(
-      success: (data) {
-        _rxLocationState.value = state;
-      }
-    );
-  }
-
-  Future<void> getAllHospitals() async {
-    _rxHospitalState.value = Status.loading();
-    final Status<List<HealthServiceProvider>> state = await _enrollmentRepository.getHospitals();
-    state.whenOrNull(
-        success: (data) {
-          _rxHospitalState.value = state;
-        }
-    );
-  }
-
-  Future<void> getMembershipCard(String uuid) async {
-    _rxMemberShipCard.value = Status.loading();
-    final Status<MemberShipCard> state = await _enrollmentRepository.getMembershipCard(uuid: uuid);
-    state.whenOrNull(
-        success: (data) {
-          _rxMemberShipCard.value = state;
-        }
-    );
-  }
-
-  void filterEnrollments() {
-    final query = searchText.value.toLowerCase();
-    if (query.isEmpty) {
-      filteredEnrollments.value = enrollments;
-    } else {
-      filteredEnrollments.value = enrollments.where((enrollment) {
-        final familyChfid = enrollment['family']['chfid'].toString().toLowerCase();
-        return familyChfid.contains(query);
-      }).toList();
-    }
-    print('Filtered enrollments: ${filteredEnrollments.length}');
-  }
-
-
-  Future<void> deleteEnrollment(int id) async {
-    final dbHelper = DatabaseHelper();
-    await dbHelper.deleteFamily(id);
-    filterEnrollments();
-    await fetchEnrollmentDetails(familyId.value);
-
+    fetchLocations();
+    fetchHospitals();
   }
 
   Future<void> fetchEnrollments() async {
     final dbHelper = DatabaseHelper();
     final data = await dbHelper.getAllFamiliesWithMembers();
-    enrollments.value =  data;
-    filterEnrollments();
-    //print('Fetched enrollments: ${enrollments.length}');
+    enrollments.value = data;
+    filteredEnrollments.value = data;
   }
 
-  void editEnrollment(Map<String, dynamic> enrollment) {
-    chfidController.text = enrollment['chfid'];
-    eaCodeController.text = enrollment['eaCode'] ?? '';
-    lastNameController.text = enrollment['lastName'];
-    givenNameController.text = enrollment['givenName'];
-    phoneController.text = enrollment['phone'];
-    emailController.text = enrollment['email'] ?? '';
-    identificationNoController.text = enrollment['identificationNo'] ?? '';
-    birthdateController.text = enrollment['birthdate'];
-    gender.value = enrollment['gender'] ?? '';
-    maritalStatus.value = enrollment['maritalStatus'] ?? '';
-    isHead.value = enrollment['isHead'] == 1;
-    headChfidController.text = enrollment['headChfid'] ?? '';
-    newEnrollment.value = enrollment['newEnrollment'] == 1;
+  Future<void> fetchLocations() async {
+    _rxLocationState.value = Status.loading();
+    try {
+      await Future.delayed(Duration(seconds: 1));
+      // Mock location data - you can replace with actual API call
+      final mockLocations = [
+        LocationDto(
+          id: 1,
+          name: 'Addis Ababa',
+          district: District(
+            id: 1,
+            name: 'Addis Ketema',
+          ),
+          municipality: Municipality(
+            id: 1,
+            name: 'Kebele 01',
+          ),
+          village: Village(
+            id: 1,
+            name: 'Village A',
+          ),
+        ),
+        LocationDto(
+          id: 2,
+          name: 'Oromia',
+          district: District(
+            id: 2,
+            name: 'Bole',
+          ),
+          municipality: Municipality(
+            id: 2,
+            name: 'Kebele 02',
+          ),
+          village: Village(
+            id: 2,
+            name: 'Village B',
+          ),
+        ),
+      ];
+      _rxLocationState.value = Status.success(data: mockLocations);
+    } catch (e) {
+      _rxLocationState.value = Status.failure(reason: e.toString());
+    }
   }
 
-
-  Future<void> deleteFamilyMember(id) async {
-    final dbHelper = DatabaseHelper();
-    await dbHelper.deleteMember(id);
-    fetchEnrollments();
-    filteredEnrollments();
-
-    SnackBars.success("Success", "Member Deleted");
+  Future<void> fetchHospitals() async {
+    _rxHospitalState.value = Status.loading();
+    try {
+      await Future.delayed(Duration(seconds: 1));
+      // Mock hospital data
+      final mockHospitals = [
+        HealthServiceProvider(
+            id: 1, name: 'General Hospital', level: 'Level 1'),
+        HealthServiceProvider(
+            id: 2, name: 'Specialized Hospital', level: 'Level 2'),
+      ];
+      _rxHospitalState.value = Status.success(data: mockHospitals);
+    } catch (e) {
+      _rxHospitalState.value = Status.failure(reason: e.toString());
+    }
   }
 
   Future<void> updateEnrollment(enrollment) async {
     final dbHelper = DatabaseHelper();
-    return;
-    // final existingEnrollment = await dbHelper. .queryEnrollmentByChfid(
-    //     chfidController.text);
-    //
-    // if (existingEnrollment != null &&
-    //     existingEnrollment['id'] != enrollment['id']) {
-    //   SnackBars.failure("Error", "CHFID already exists.");
-    //   return;
-    // }
-    //
-    // final updatedData = {
-    //   'phone': phoneController.text,
-    //   'birthdate': birthdateController.text,
-    //   'chfid': chfidController.text,
-    //   'eaCode': eaCodeController.text,
-    //   'email': emailController.text,
-    //   'gender': gender.value,
-    //   'givenName': givenNameController.text,
-    //   'identificationNo': identificationNoController.text,
-    //   'isHead': isHead.value ? 1 : 0,
-    //   'lastName': lastNameController.text,
-    //   'maritalStatus': maritalStatus.value,
-    //   'headChfid': headChfidController.text,
-    //   'newEnrollment': newEnrollment.value ? 1 : 0,
-    // };
-    //
-    // await dbHelper.updateEnrollment(updatedData);
-    // fetchEnrollments();
-    // SnackBars.success("Success", "Enrollment updated successfully.");
+    // Implementation for updating enrollment
+    // TODO: Add update logic with disability status
   }
 
-  Future<void> onEnrollmentSubmit() async {
-    final db = await DatabaseHelper().database;
+  // Offline save
+  Future<void> onEnrollmentSubmitOffline() async {
+    if (!_validateForm()) return;
 
+    final db = await DatabaseHelper().database;
     String? photoBase64;
     if (photo.value != null) {
       photoBase64 = await _encodePhotoToBase64(photo.value!);
@@ -341,16 +357,210 @@ class EnrollmentController extends GetxController with SingleGetTickerProviderMi
       'newEnrollment': newEnrollment.value ? 1 : 0,
       'photo': photoBase64 ?? "",
       'remarks': "",
-      // Additional fields to save
-      'healthFacilityLevel': selectedHealthFacilityLevel.value,
-      'healthFacility': selectedHealthFacility.value,
+      'membershipType': membershipType.value,
+      'membershipLevel': membershipLevel.value,
       'familyType': selectedFamilyType.value,
       'confirmationType': selectedConfirmationType.value,
       'confirmationNumber': confirmationNumber.text,
       'addressDetail': addressDetail.text,
       'relationShip': relationShip.value,
+      'disabilityStatus': disabilityStatus.value,
+      'syncStatus': 0,
     };
-    // Extract family data from the enrollment data
+
+    try {
+      // Save to local database
+      await _saveToLocalDatabase(enrollmentData);
+      SnackBars.success("Success", "Member saved offline successfully!");
+      resetForm();
+      fetchEnrollments();
+    } catch (e) {
+      SnackBars.failure("Error", "Failed to save member: $e");
+    }
+  }
+
+  // Online save with payment
+  Future<void> onEnrollmentSubmitOnline() async {
+    if (!_validateForm()) return;
+
+    try {
+      isLoading(true);
+
+      // First save the enrollment data
+      await onEnrollmentSubmitOffline();
+
+      // Then proceed to payment
+      await _initiatePayment();
+    } catch (e) {
+      SnackBars.failure("Error", "Failed to process enrollment: $e");
+    } finally {
+      isLoading(false);
+    }
+  }
+
+  // Payment flow
+  Future<void> _initiatePayment() async {
+    try {
+      // Show processing dialog
+      Get.dialog(
+        AlertDialog(
+          title: Row(
+            children: [
+              CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF036273)),
+              ),
+              SizedBox(width: 16),
+              Text('Processing Payment'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Amount: ${calculateTotalContribution()} ETB'),
+              Text('Currency: ETB'),
+              Text('Description: CBHI Membership Payment'),
+              SizedBox(height: 16),
+              Text('Initiating ArifPay payment gateway...'),
+            ],
+          ),
+        ),
+        barrierDismissible: false,
+      );
+
+      // Simulate payment processing
+      await Future.delayed(Duration(seconds: 2));
+
+      final response = await _arifpayService.initiatePayment(
+        amount: calculateTotalContribution(),
+        currency: 'ETB',
+        orderId: _generateOrderId(),
+        description: 'CBHI Membership Payment',
+        customerEmail: emailController.text.isEmpty
+            ? 'member@cbhi.et'
+            : emailController.text,
+        customerPhone:
+            phoneController.text.isEmpty ? '0911000000' : phoneController.text,
+      );
+
+      currentPaymentSession.value = response;
+
+      // Close processing dialog
+      Get.back();
+
+      // Navigate to payment view
+      Get.to(() => PaymentView(
+            paymentUrl: response.checkoutUrl,
+            onPaymentComplete: _handlePaymentComplete,
+            onPaymentFailed: _handlePaymentFailed,
+          ));
+    } catch (e) {
+      Get.back(); // Close any open dialogs
+      SnackBars.failure("Payment Error", "Failed to initiate payment: $e");
+    }
+  }
+
+  void _handlePaymentComplete(String transactionId) async {
+    try {
+      // Verify payment
+      final verification = await _arifpayService.verifyPayment(transactionId);
+
+      if (verification.verified) {
+        receiptData.value = verification;
+
+        // Update sync status
+        syncStatus.value = 1;
+
+        // Show receipt
+        Get.to(() => ReceiptView(
+              receiptData: verification,
+              onDownloadQR: _showQRCard,
+            ));
+
+        SnackBars.success("Success", "Payment completed successfully!");
+      } else {
+        SnackBars.failure("Error", "Payment verification failed");
+      }
+    } catch (e) {
+      SnackBars.failure("Error", "Payment verification error: $e");
+    }
+  }
+
+  void _handlePaymentFailed(String error) {
+    SnackBars.failure("Payment Failed", error);
+  }
+
+  void _showQRCard() {
+    // Show loading dialog while generating QR card
+    Get.dialog(
+      AlertDialog(
+        title: Row(
+          children: [
+            CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF036273)),
+            ),
+            SizedBox(width: 16),
+            Text('Generating QR Card'),
+          ],
+        ),
+        content: Text('Creating your CBHI membership card...'),
+      ),
+      barrierDismissible: false,
+    );
+
+    // Simulate QR generation delay
+    Future.delayed(Duration(seconds: 2), () {
+      Get.back(); // Close loading dialog
+
+      // Navigate to QR card view
+      Get.to(() => QRCardView(
+            chfid: chfidController.text,
+            memberName:
+                '${givenNameController.text} ${lastNameController.text}',
+            receiptData: receiptData.value,
+          ));
+    });
+  }
+
+  // Sync to backend
+  Future<void> syncToBackend(List<int> enrollmentIds) async {
+    try {
+      isLoading(true);
+
+      for (int id in enrollmentIds) {
+        // Mock sync - simulate API call
+        await Future.delayed(Duration(seconds: 1));
+
+        // Update sync status in database
+        // TODO: Implement actual sync logic
+      }
+
+      SnackBars.success("Success", "Records synced successfully!");
+      fetchEnrollments();
+    } catch (e) {
+      SnackBars.failure("Sync Error", "Failed to sync records: $e");
+    } finally {
+      isLoading(false);
+    }
+  }
+
+  bool _validateForm() {
+    if (!enrollmentFormKey.currentState!.validate()) {
+      return false;
+    }
+
+    if (disabilityStatus.value.isEmpty) {
+      SnackBars.failure("Validation Error", "Please select disability status");
+      return false;
+    }
+
+    return true;
+  }
+
+  Future<void> _saveToLocalDatabase(Map<String, dynamic> enrollmentData) async {
+    // Extract family data
     Map<String, dynamic> familyData = {
       'familyType': enrollmentData['familyType'] ?? '',
       'confirmationType': enrollmentData['confirmationType'] ?? '',
@@ -358,228 +568,29 @@ class EnrollmentController extends GetxController with SingleGetTickerProviderMi
       'addressDetail': enrollmentData['addressDetail'] ?? ''
     };
 
-    // Extract member data from the enrollment data
-    Map<String, dynamic> memberData = {
-      'phone': enrollmentData['phone'] ?? '',
-      'birthdate': enrollmentData['birthdate'] ?? '',
-      'chfid': enrollmentData['chfid'] ?? '',
-      'eaCode': enrollmentData['eaCode'] ?? '',
-      'email': enrollmentData['email'] ?? '',
-      'gender': enrollmentData['gender'] ?? '',
-      'givenName': enrollmentData['givenName'] ?? '',
-      'identificationNo': enrollmentData['identificationNo'] ?? '',
-      'isHead': enrollmentData['isHead'] ?? 0,
-      'lastName': enrollmentData['lastName'] ?? '',
-      'maritalStatus': enrollmentData['maritalStatus'] ?? '',
-      'headChfid': enrollmentData['headChfid'] ?? '',
-      'newEnrollment': enrollmentData['newEnrollment'] ?? 0,
-      'photo': enrollmentData['photo'] ?? '',
-      'remarks': enrollmentData['remarks'] ?? '',
-      'healthFacilityLevel': enrollmentData['healthFacilityLevel'] ?? '',
-      'healthFacility': enrollmentData['healthFacility'] ?? '',
-      'relationShip': enrollmentData['relationShip'] ?? ''
-    };
-    Map<String, dynamic> voucherData = {
-      'voucherNumber' : voucherNumber.value
-    };
-    // Convert family data to JSON string
-    String familyJsonContent = jsonEncode(familyData);
-    String memberJsonContent = jsonEncode(memberData);
+    final dbHelper = DatabaseHelper();
 
-
-
-    // Insert family into the 'family' table
-
-    if (newEnrollment.value)
-      // Insert family into the 'family' table and get the family ID
-      familyId.value = await db.insert('family', {
-        'chfid': enrollmentData['chfid'],
-        'json_content': familyJsonContent,
-        'photo': enrollmentData['photo'],
-        'sync': 0, // Assuming false for initial save
-      });
-
-      // Now insert the member into the 'members' table, using the familyId
-      final members = await db.insert('members', {
-        'chfid': enrollmentData['chfid'], // Unique CHFID for the member
-        'name': '${enrollmentData['givenName']} ${enrollmentData['lastName']}',
-        'head': enrollmentData['isHead'] ?? 0,
-        'json_content': memberJsonContent,
-        'photo': enrollmentData['photo'],
-        'sync': 0, // Assuming false for initial save
-        'family_id':  familyId.value, // Link member to the inserted family using familyId
-      });
-
-
-
-    SnackBars.success("Success", "Enrollment saved locally.");
-    fetchEnrollments();
-    fetchEnrollmentDetails(familyId.value);
-  }
-
-
-  var voucherImage = Rxn<XFile>();
-
-  // Method to pick an image
-  Future<void> pickVoucherImage() async {
-    try {
-      final XFile? pickedImage = await _picker.pickImage(source: ImageSource.gallery);
-
-      if (pickedImage != null) {
-        voucherImage.value = pickedImage;
-        print('Voucher image selected: ${pickedImage.path}');
-      }
-    } catch (e) {
-      print('Error picking image: $e');
+    if (newEnrollment.value && isHead.value) {
+      // Insert new family and head member
+      await dbHelper.insertFamilyAndHeadMember(
+        enrollmentData['chfid'],
+        familyData,
+        '${enrollmentData['givenName']} ${enrollmentData['lastName']}',
+        enrollmentData['photo'],
+      );
+    } else {
+      // Insert as family member
+      await dbHelper.insertFamilyMember(
+        enrollmentData['headChfid'],
+        '${enrollmentData['givenName']} ${enrollmentData['lastName']}',
+        enrollmentData,
+        enrollmentData['photo'],
+      );
     }
   }
 
-  // Optional: If you want to clear the image
-  void clearVoucherImage() {
-    voucherImage.value = null;
-  }
-
-  // Future<void> onEnrollmentOnline({bool offlineTrue = false}) async {
-  //   try {
-  //     _rxEnrollmentState.value = Status.loading();
-  //
-  //     // Prepare the members' data to be included in the DTO
-  //     final List<MemberDto> membersData = enrollmentController.members.map((member) {
-  //       return MemberDto(
-  //         chfid: member['chfid'],
-  //         givenName: member['given_name'],
-  //         lastName: member['last_name'],
-  //         birthdate: member['birthdate'],
-  //         gender: member['gender'],
-  //         photo: member['photo'] ?? "",
-  //         relationShip: member['relationship'],
-  //         identificationNo: member['identification_no'] ?? "",
-  //         isHead: member['is_head'],
-  //       );
-  //     }).toList();
-  //
-  //     // Prepare the family data (including members) for submission
-  //     final response = await _enrollmentRepository.create(
-  //       dto: EnrollmentDto(
-  //         phone: phoneController.text,
-  //         birthdate: birthdateController.text,
-  //         chfid: chfidController.text,
-  //         eaCode: eaCodeController.text,
-  //         email: emailController.text,
-  //         gender: gender.value,
-  //         givenName: givenNameController.text,
-  //         identificationNo: identificationNoController.text,
-  //         isHead: isHead.value,
-  //         lastName: lastNameController.text,
-  //         maritalStatus: maritalStatus.value,
-  //         headChfid: headChfidController.text,
-  //         newEnrollment: newEnrollment.value,
-  //         photo: photoBase64 ?? "",
-  //         healthFacilityLevel: selectedHealthFacilityLevel.value,
-  //         healthFacility: selectedHealthFacility.value,
-  //         familyType: selectedFamilyType.value,
-  //         confirmationType: selectedConfirmationType.value,
-  //         confirmationNumber: confirmationNumber.text,
-  //         addressDetail: addressDetail.text,
-  //         relationShip: relationShip.value,
-  //
-  //         // New additions: members and family ID
-  //         familyId: family['family_id'], // Assuming family_id is available in your family data
-  //         members: membersData, // Pass the members data
-  //       ),
-  //     );
-  //
-  //     // Handle the response from the API
-  //     if (!response.error) {
-  //       FocusManager.instance.primaryFocus?.unfocus();
-  //       resetForm();
-  //       Get.back();
-  //       popupBottomSheet(bottomSheetBody: const SubmitBottomSheet());
-  //     } else {
-  //       SnackBars.failure("Oops!", response.message);
-  //     }
-  //   } catch (error) {
-  //     SnackBars.failure("Error", "An error occurred: $error");
-  //   } finally {
-  //     _rxEnrollmentState.value = Status.idle();
-  //   }
-  // }
-
-  Future<void> onEnrollmentOnline(int enrollmentId) async {
-    isLoading.value = true;
-    try {
-      // Set loading status
-      _rxEnrollmentState.value = Status.loading();
-
-      // Step 1: Fetch family and members data using enrollmentId
-      await fetchEnrollmentDetails(enrollmentId);
-
-      // Step 2: Get family and members details from the controller
-      final familyData = family;
-      final membersData = members;
-
-      if (familyData.isNotEmpty && membersData.isNotEmpty) {
-        // Step 3: Prepare the request payload
-
-          // Directly send family and members as the payload
-          final Map<String, dynamic> requestData = {
-            'family': familyData,  // Use familyData directly
-            'members': membersData, // Use membersData directly
-            'voucherData' : voucherNumber.value,
-            'voucherImage' : await _encodePhotoToBase64(voucherImage.value!)
-          };
-
-          // You can now use requestData as the payload in your API request
-          print(requestData);  // For debugging
-          // send requestData to your API
-
-
-        // Step 4: Submit the requestData to the API
-        final response = await _enrollmentRepository.enrollmentSubmit(requestData);
-
-        // Step 5: Handle the API response
-        if (!response.error) {
-          isLoading.value = false;
-          FocusManager.instance.primaryFocus?.unfocus();
-          resetForm();
-          Get.back();
-          popupBottomSheet(bottomSheetBody: const SubmitBottomSheet());
-        } else {
-          isLoading.value = false;
-          SnackBars.failure("Oops!", response.message);
-        }
-      } else {
-        isLoading.value = false;
-        SnackBars.failure("Error", "Family or members data is missing");
-      }
-    } catch (error) {
-      isLoading.value = false;
-      // Step 6: Handle errors during the process
-      SnackBars.failure("Error", "An error occurred: $error");
-    } finally {
-      // Set the state back to idle
-      _rxEnrollmentState.value = Status.idle();
-    }
-  }
-
-  String generateRandomChfid() {
-    final random = Random();
-    return List.generate(10, (_) => random.nextInt(10)).join();
-  }
-
-  void initializeDummyData() {
-    chfidController.text = generateRandomChfid();
-    eaCodeController.text = 'EA12345';
-    lastNameController.text = 'Doe';
-    givenNameController.text = 'John';
-    phoneController.text = '+1234567890';
-    emailController.text = 'john.doe@example.com';
-    identificationNoController.text = 'ID123456789';
-    birthdateController.text = '1980-01-01';
-    gender.value = 'Male';
-    isHead.value = false;
-    headChfidController.text = chfidController.text;
-    newEnrollment.value = false;
+  String _generateOrderId() {
+    return 'ORD_${DateTime.now().millisecondsSinceEpoch}';
   }
 
   Future<String> _encodePhotoToBase64(XFile photo) async {
@@ -587,20 +598,215 @@ class EnrollmentController extends GetxController with SingleGetTickerProviderMi
     return base64Encode(bytes);
   }
 
+  // Voucher image handling
+  var voucherImage = Rxn<XFile>();
+
+  // Premium and contribution data
+  var premiumAmount = 500.0.obs; // Default premium amount
+  var currency = 'ETB'.obs; // Default currency
+  var perMember = 50.0.obs; // Per member cost
+  var validity = '1 Year'.obs; // Default validity period
+
+  // Missing methods for enrollment operations
+  Future<void> deleteEnrollment(int enrollmentId) async {
+    try {
+      isLoading(true);
+
+      // Remove from local database
+      final db = await DatabaseHelper().database;
+      await db.delete('families', where: 'id = ?', whereArgs: [enrollmentId]);
+      await db
+          .delete('members', where: 'family_id = ?', whereArgs: [enrollmentId]);
+
+      // Refresh the enrollments list
+      fetchEnrollments();
+
+      SnackBars.success("Success", "Enrollment deleted successfully!");
+    } catch (e) {
+      SnackBars.failure("Error", "Failed to delete enrollment: $e");
+    } finally {
+      isLoading(false);
+    }
+  }
+
+  Future<void> pickVoucherImage() async {
+    try {
+      final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+      if (pickedFile != null) {
+        voucherImage.value = pickedFile;
+        SnackBars.success("Success", "Voucher image selected!");
+      }
+    } catch (e) {
+      SnackBars.failure("Error", "Failed to pick voucher image: $e");
+    }
+  }
+
+  void clearVoucherImage() {
+    voucherImage.value = null;
+    SnackBars.success("Success", "Voucher image cleared!");
+  }
+
+  Future<void> onEnrollmentOnline(int familyId) async {
+    try {
+      isLoading(true);
+
+      // Process online enrollment for the family
+      await _processOnlineEnrollment(familyId);
+
+      // Proceed to payment
+      await _initiatePayment();
+
+      SnackBars.success("Success", "Online enrollment initiated!");
+    } catch (e) {
+      SnackBars.failure("Error", "Failed to process online enrollment: $e");
+    } finally {
+      isLoading(false);
+    }
+  }
+
+  Future<void> _processOnlineEnrollment(int familyId) async {
+    // Mock online enrollment processing
+    await Future.delayed(Duration(seconds: 2));
+
+    // Update sync status to indicate online processing
+    final db = await DatabaseHelper().database;
+    await db.update(
+      'families',
+      {'sync': 1},
+      where: 'id = ?',
+      whereArgs: [familyId],
+    );
+  }
+
+  // Step navigation for new form
+  var currentStep = 1.obs;
+  var stepRegions = <LocationDto>[].obs;
+  var stepDistricts = <District>[].obs;
+  var stepMunicipalities = <Municipality>[].obs;
+  var stepVillages = <Village>[].obs;
+
+  String getStepTitle() {
+    switch (currentStep.value) {
+      case 1:
+        return 'Personal Information';
+      case 2:
+        return 'Location & Services';
+      case 3:
+        return 'Family Details';
+      case 4:
+        return 'Review & Submit';
+      default:
+        return 'Personal Information';
+    }
+  }
+
+  void nextStep() {
+    if (currentStep.value < 4) {
+      currentStep.value++;
+    }
+  }
+
+  void previousStep() {
+    if (currentStep.value > 1) {
+      currentStep.value--;
+    }
+  }
+
+  void initializeTestData() {
+    // Populate test data for easier testing
+    chfidController.text = '1234567890';
+    identificationNoController.text = '123456';
+    lastNameController.text = 'Doe';
+    givenNameController.text = 'John';
+    gender.value = 'Male';
+    phoneController.text = '0961186323';
+    emailController.text = 'john.doe@example.com';
+    birthdateController.text = '1999-05-04';
+    maritalStatus.value = 'Single';
+    relationShip.value = 'Head';
+    disabilityStatus.value = 'None';
+    membershipType.value = 'Paying'; // Story 3 requirement
+    membershipLevel.value = 'Level 1'; // Story 3 requirement
+
+    // Initialize location data
+    _initializeLocationData();
+  }
+
+  void _initializeLocationData() {
+    // Mock location data
+    stepRegions.value = [
+      LocationDto(id: 1, name: 'Addis Ababa'),
+      LocationDto(id: 2, name: 'Oromia'),
+      LocationDto(id: 3, name: 'Amhara'),
+    ];
+
+    stepDistricts.value = [
+      District(id: 1, name: 'Addis Ketema'),
+      District(id: 2, name: 'Bole'),
+      District(id: 3, name: 'Kirkos'),
+    ];
+
+    stepMunicipalities.value = [
+      Municipality(id: 1, name: 'Kebele 01'),
+      Municipality(id: 2, name: 'Kebele 02'),
+      Municipality(id: 3, name: 'Kebele 03'),
+    ];
+
+    stepVillages.value = [
+      Village(id: 1, name: 'Village A'),
+      Village(id: 2, name: 'Village B'),
+      Village(id: 3, name: 'Village C'),
+    ];
+
+    // Set default selections using existing variables
+    selectedRegion.value = stepRegions.first;
+    selectedDistrict.value = stepDistricts.first;
+    selectedMunicipality.value = stepMunicipalities.first;
+    selectedVillage.value = stepVillages.first;
+  }
+
+  void onLocationChanged(String type, dynamic value) {
+    // Handle location dropdown changes
+    switch (type) {
+      case 'Region':
+        selectedRegion.value = value;
+        // Reset dependent dropdowns
+        selectedDistrict.value = null;
+        selectedMunicipality.value = null;
+        selectedVillage.value = null;
+        break;
+      case 'District':
+        selectedDistrict.value = value;
+        // Reset dependent dropdowns
+        selectedMunicipality.value = null;
+        selectedVillage.value = null;
+        break;
+      case 'Municipality':
+        selectedMunicipality.value = value;
+        // Reset dependent dropdown
+        selectedVillage.value = null;
+        break;
+      case 'Village':
+        selectedVillage.value = value;
+        break;
+    }
+  }
+
   Future<void> scanQRCode(TextEditingController controller) async {
     try {
-      // Navigate to a page that uses QRView widget to scan the QR code
-      final result = await Get.to(() => QRViewEnrollment(controller: controller));
-
+      final result =
+          await Get.to(() => QRViewEnrollment(controller: controller));
       if (result != null) {
         controller.text = result;
       } else {
         SnackBars.failure("Failed", "QR code scan was unsuccessful.");
       }
     } catch (e) {
-      SnackBars.failure("Error", "An error occurred while scanning the QR code.");
+      SnackBars.failure(
+          "Error", "An error occurred while scanning the QR code.");
     }
   }
+
   void resetForm() {
     chfidController.clear();
     eaCodeController.clear();
@@ -612,6 +818,7 @@ class EnrollmentController extends GetxController with SingleGetTickerProviderMi
     birthdateController.clear();
     gender.value = '';
     maritalStatus.value = '';
+    disabilityStatus.value = '';
     isHead.value = false;
     photo.value = null;
     newEnrollment.value = true;
@@ -639,7 +846,6 @@ class EnrollmentController extends GetxController with SingleGetTickerProviderMi
       );
 
       if (croppedFile != null) {
-        // Convert CroppedFile to File
         final croppedFileAsFile = File(croppedFile.path);
         photo.value = XFile(croppedFileAsFile.path);
       }
@@ -674,27 +880,181 @@ class EnrollmentController extends GetxController with SingleGetTickerProviderMi
     _rxEnrollmentState.value = Status.idle();
   }
 
+  // Family Member Management Methods
+  void addFamilyMember() {
+    // Validate current form
+    if (givenNameController.text.isEmpty || lastNameController.text.isEmpty) {
+      Get.snackbar(
+        'Validation Error',
+        'Please fill in the member details before adding',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
 
-  Future<void> confirmAddMember(dynamic familyId, String FamilyChfid) async {
-    Get.defaultDialog(
-        title: "Add Member",
-        middleText: "Are you sure you want to add a new member?",
-        textCancel: "No",
-        textConfirm: "Yes",
-        confirmTextColor: Colors.white,
-        onConfirm: () {
-          Get.back();  // Close the dialog
-          openMemberForm(familyId, FamilyChfid); // Call the form creation logic
-        }
+    // Create new family member from current form data
+    final newMember = FamilyMember(
+      chfid: chfidController.text.isEmpty
+          ? _generateChfid()
+          : chfidController.text,
+      firstName: givenNameController.text,
+      lastName: lastNameController.text,
+      gender: gender.value,
+      birthdate: birthdateController.text,
+      phone: phoneController.text,
+      email: emailController.text,
+      identificationNo: identificationNoController.text,
+      maritalStatus: maritalStatus.value,
+      relationship: relationShip.value,
+      disabilityStatus: disabilityStatus.value,
+      isHead: isHead.value,
+      photoPath: photo.value?.path,
+    );
+
+    // If this member is set as head, remove head status from others
+    if (newMember.isHead) {
+      for (var member in familyMembers) {
+        member.isHead = false;
+      }
+    }
+
+    // Add to family members list
+    familyMembers.add(newMember);
+
+    // Clear form for next member
+    _clearFormForNextMember();
+
+    Get.snackbar(
+      'Success',
+      'Family member added successfully',
+      backgroundColor: Color(0xFF036273),
+      colorText: Colors.white,
     );
   }
 
-  void openMemberForm(dynamic familyId, dynamic FamilyChfid) {
-    // Set newEnrollment to true and update the form as needed
-    newEnrollment.value = false;
-    isHead.value = false; // Set default to false if needed
-    // Pass enrollmentId to update in database later when saved
-    Get.to(() => EnrollmentDetailsPage(enrollmentId: familyId, chfid: FamilyChfid,));
+  void deleteFamilyMember(int index) {
+    if (index >= 0 && index < familyMembers.length) {
+      final member = familyMembers[index];
+
+      Get.defaultDialog(
+        title: 'Delete Member',
+        middleText:
+            'Are you sure you want to remove ${member.fullName} from the family?',
+        textCancel: 'Cancel',
+        textConfirm: 'Delete',
+        confirmTextColor: Colors.white,
+        buttonColor: Colors.red,
+        onConfirm: () {
+          familyMembers.removeAt(index);
+          Get.back();
+          Get.snackbar(
+            'Success',
+            'Family member removed successfully',
+            backgroundColor: Color(0xFF036273),
+            colorText: Colors.white,
+          );
+        },
+      );
+    }
+  }
+
+  void setFamilyHead(int index) {
+    if (index >= 0 && index < familyMembers.length) {
+      // Remove head status from all members
+      for (var member in familyMembers) {
+        member.isHead = false;
+      }
+
+      // Set selected member as head
+      familyMembers[index].isHead = true;
+      familyMembers.refresh(); // Trigger UI update
+
+      Get.snackbar(
+        'Success',
+        '${familyMembers[index].fullName} is now the family head',
+        backgroundColor: Color(0xFF036273),
+        colorText: Colors.white,
+      );
+    }
+  }
+
+  void editFamilyMember(int index) {
+    if (index >= 0 && index < familyMembers.length) {
+      final member = familyMembers[index];
+
+      // Populate form with member data
+      chfidController.text = member.chfid;
+      givenNameController.text = member.firstName;
+      lastNameController.text = member.lastName;
+      gender.value = member.gender;
+      birthdateController.text = member.birthdate;
+      phoneController.text = member.phone;
+      emailController.text = member.email;
+      identificationNoController.text = member.identificationNo;
+      maritalStatus.value = member.maritalStatus;
+      relationShip.value = member.relationship;
+      disabilityStatus.value = member.disabilityStatus;
+      isHead.value = member.isHead;
+
+      if (member.photoPath != null) {
+        photo.value = XFile(member.photoPath!);
+      }
+
+      // Remove member from list (will be re-added when form is submitted)
+      familyMembers.removeAt(index);
+    }
+  }
+
+  String _generateChfid() {
+    // Generate a simple CHFID (in real app, this would be more sophisticated)
+    return 'CHF${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+  }
+
+  void _clearFormForNextMember() {
+    // Clear form but keep some family-level data
+    chfidController.clear();
+    givenNameController.clear();
+    lastNameController.clear();
+    phoneController.clear();
+    emailController.clear();
+    identificationNoController.clear();
+    birthdateController.clear();
+    gender.value = '';
+    maritalStatus.value = '';
+    relationShip.value = '';
+    disabilityStatus.value = 'None';
+    isHead.value = false;
+    photo.value = null;
+  }
+
+  // Get family head
+  FamilyMember? get familyHead {
+    try {
+      return familyMembers.firstWhere((member) => member.isHead);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Calculate total contribution based on family size
+  double calculateTotalContribution() {
+    if (familyMembers.isEmpty) return 0.0;
+
+    double baseRate = 0.0;
+    switch (membershipLevel.value) {
+      case 'Level 1':
+        baseRate = membershipType.value == 'Paying' ? 100.0 : 50.0;
+        break;
+      case 'Level 2':
+        baseRate = membershipType.value == 'Paying' ? 150.0 : 75.0;
+        break;
+      case 'Level 3':
+        baseRate = membershipType.value == 'Paying' ? 200.0 : 100.0;
+        break;
+    }
+
+    return baseRate * familyMembers.length;
   }
 
   @override
@@ -709,39 +1069,4 @@ class EnrollmentController extends GetxController with SingleGetTickerProviderMi
     birthdateController.dispose();
     super.onClose();
   }
-
-
-  var premiumAmount = 0.obs;
-  var perMember = 0.obs;
-  var currency = ''.obs;
-  var validity = ''.obs;
-
-// Add a method to calculate total contribution
-  int calculateTotalContribution() {
-    return members.length * perMember.value;
-  }
-
-  Future<void> fetchContributionRequirements() async {
-    try {
-      final configData = await _storage.read('configurations') as Map<String, dynamic>?;
-      if (configData != null) {
-        final contributionRequirements = configData['contributions_requirements'] as Map<String, dynamic>;
-        premiumAmount.value = contributionRequirements['premium_amount'];
-        perMember.value = contributionRequirements['per_member'];
-        currency.value = contributionRequirements['Currency'];
-        validity.value = contributionRequirements['validity'];
-      }
-    } catch (e) {
-      print('Error reading contribution requirements: $e');
-      // Set default or empty values if fetching fails
-      premiumAmount.value = 0;
-      perMember.value = 0;
-      currency.value = '';
-      validity.value = '';
-    }
-  }
 }
-
-
-
-
