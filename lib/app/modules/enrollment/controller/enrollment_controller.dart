@@ -13,6 +13,8 @@ import 'package:openimis_app/app/modules/policy/views/widgets/qr_view.dart';
 import 'package:openimis_app/app/data/remote/services/payment/arifpay_service.dart';
 import 'package:openimis_app/app/data/local/services/contribution_config_service.dart';
 import 'package:uuid/uuid.dart';
+import 'package:connectivity/connectivity.dart';
+import 'package:timer/timer.dart';
 
 import '../../../data/remote/base/status.dart';
 import '../../../di/locator.dart';
@@ -157,12 +159,13 @@ class EnrollmentController extends GetxController
 
   // Payment related
   var currentPaymentSession = Rxn<PaymentInitiationResponse>();
-  var paymentStatus = ''.obs;
+  var paymentStatus = 'PENDING'.obs;
   var paymentAmount = 150.0.obs; // Mock contribution amount
   var receiptData = Rxn<PaymentVerificationResponse>();
 
   // Sync status
-  var syncStatus = 0.obs; // 0 = not synced, 1 = synced
+  var syncStatus = 'PENDING'.obs;
+  var isOnline = true.obs;
 
   // Disability options
   final List<String> disabilityOptions = [
@@ -258,6 +261,10 @@ class EnrollmentController extends GetxController
     fetchEnrollments();
     fetchLocations();
     fetchHospitals();
+    // Start periodic sync check
+    _startPeriodicSync();
+    // Check initial connectivity
+    _checkConnectivity();
   }
 
   Future<void> fetchEnrollments() async {
@@ -474,7 +481,7 @@ class EnrollmentController extends GetxController
         receiptData.value = verification;
 
         // Update sync status
-        syncStatus.value = 1;
+        syncStatus.value = 'SYNCED';
 
         // Show receipt
         Get.to(() => ReceiptView(
@@ -1284,6 +1291,134 @@ class EnrollmentController extends GetxController
     identificationNoController.dispose();
     birthdateController.dispose();
     super.onClose();
+  }
+
+  // Check and update connectivity status
+  Future<void> _checkConnectivity() async {
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      isOnline.value = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } on SocketException catch (_) {
+      isOnline.value = false;
+    }
+  }
+
+  // Start periodic sync of offline data
+  void _startPeriodicSync() {
+    Timer.periodic(Duration(minutes: 5), (timer) async {
+      if (isOnline.value) {
+        await syncOfflineData();
+      }
+    });
+  }
+
+  // Sync offline data with server
+  Future<void> syncOfflineData() async {
+    try {
+      final dbHelper = DatabaseHelper();
+      final unsyncedData = await dbHelper.getUnsyncedData();
+
+      for (var data in unsyncedData) {
+        try {
+          // Attempt to sync with server
+          final response = await _enrollmentRepository.syncFamilyData(data);
+          
+          if (response.error == false) {
+            // Update local sync status on success
+            await dbHelper.updateSyncStatusWithError(
+              data['family']['id'],
+              status: 'SYNCED',
+            );
+          } else {
+            // Update local sync status with error
+            await dbHelper.updateSyncStatusWithError(
+              data['family']['id'],
+              status: 'FAILED',
+              errorMessage: response.message,
+            );
+          }
+        } catch (e) {
+          // Handle sync error for this family
+          await dbHelper.updateSyncStatusWithError(
+            data['family']['id'],
+            status: 'FAILED',
+            errorMessage: e.toString(),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error during sync: $e');
+    }
+  }
+
+  // Process payment with offline support
+  Future<void> processPayment(int familyId, double amount) async {
+    final dbHelper = DatabaseHelper();
+    
+    try {
+      if (isOnline.value) {
+        // Online payment processing
+        final paymentResult = await _arifpayService.initiatePayment(amount);
+        
+        if (paymentResult.success) {
+          await dbHelper.updateFamilyPaymentStatus(
+            familyId,
+            status: 'PAID',
+            paymentMethod: paymentResult.method,
+            paymentReference: paymentResult.reference,
+          );
+          paymentStatus.value = 'PAID';
+        } else {
+          await dbHelper.updateFamilyPaymentStatus(
+            familyId,
+            status: 'FAILED',
+          );
+          paymentStatus.value = 'FAILED';
+        }
+      } else {
+        // Offline payment handling
+        await dbHelper.updateFamilyPaymentStatus(
+          familyId,
+          status: 'PENDING',
+        );
+        paymentStatus.value = 'PENDING';
+        Get.snackbar(
+          'Offline Mode',
+          'Payment will be processed when connection is restored',
+          backgroundColor: Colors.orange,
+          colorText: Colors.white,
+        );
+      }
+    } catch (e) {
+      await dbHelper.updateFamilyPaymentStatus(
+        familyId,
+        status: 'FAILED',
+      );
+      paymentStatus.value = 'FAILED';
+      Get.snackbar(
+        'Payment Error',
+        'Failed to process payment: $e',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    }
+  }
+
+  // Get all families with their payment status
+  Future<List<Map<String, dynamic>>> getFamiliesWithPaymentStatus() async {
+    final dbHelper = DatabaseHelper();
+    final families = await dbHelper.getAllFamiliesWithMembers();
+    
+    return families.map((family) {
+      final paymentStatus = family['family']['payment_status'] ?? 'PENDING';
+      final syncStatus = family['family']['sync'] == 1 ? 'SYNCED' : 'PENDING';
+      
+      return {
+        ...family,
+        'payment_status': paymentStatus,
+        'sync_status': syncStatus,
+      };
+    }).toList();
   }
 }
 
