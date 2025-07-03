@@ -11,6 +11,8 @@ import 'package:openimis_app/app/modules/enrollment/controller/LocationDto.dart'
 import 'package:openimis_app/app/modules/enrollment/controller/MembershipDto.dart';
 import 'package:openimis_app/app/modules/policy/views/widgets/qr_view.dart';
 import 'package:openimis_app/app/data/remote/services/payment/arifpay_service.dart';
+import 'package:openimis_app/app/data/local/services/contribution_config_service.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../data/remote/base/status.dart';
 import '../../../di/locator.dart';
@@ -106,6 +108,7 @@ class EnrollmentController extends GetxController
 
   final _enrollmentRepository = getIt.get<EnrollmentRepository>();
   final _arifpayService = ArifPayService();
+  final _contributionConfigService = ContributionConfigService();
 
   // Form controllers
   final chfidController = TextEditingController();
@@ -136,6 +139,7 @@ class EnrollmentController extends GetxController
   // Membership Type & Level fields - Story 3 requirement
   var membershipType = ''.obs; // 'Paying' or 'Indigent'
   var membershipLevel = ''.obs; // 'Level 1', 'Level 2', or 'Level 3'
+  var areaType = ''.obs; // 'Rural' or 'City'
 
   var selectedFamilyType = ''.obs;
   var selectedConfirmationType = ''.obs;
@@ -559,33 +563,127 @@ class EnrollmentController extends GetxController
     return true;
   }
 
-  Future<void> _saveToLocalDatabase(Map<String, dynamic> enrollmentData) async {
-    // Extract family data
-    Map<String, dynamic> familyData = {
-      'familyType': enrollmentData['familyType'] ?? '',
-      'confirmationType': enrollmentData['confirmationType'] ?? '',
-      'confirmationNumber': enrollmentData['confirmationNumber'] ?? '',
-      'addressDetail': enrollmentData['addressDetail'] ?? ''
-    };
+  Future<int?> _saveToLocalDatabase(Map<String, dynamic> enrollmentData) async {
+    try {
+      final dbHelper = DatabaseHelper();
+      
+      // Auto-generate CHFID if empty or not provided
+      String chfid = chfidController.text.trim();
+      if (chfid.isEmpty) {
+        chfid = await dbHelper.generateUniqueChfid();
+        chfidController.text = chfid; // Update the UI
+        SnackBars.success("Auto-Generated", "CBHI ID generated: $chfid");
+      }
+      
+      // Prepare family data with all form fields
+      Map<String, dynamic> familyData = {
+        'uuid': DatabaseHelper.generateMemberUUID(),
+        'chfid': chfid,
+        'familyType': selectedFamilyType.value,
+        'confirmationType': selectedConfirmationType.value,
+        'confirmationNumber': confirmationNumber.text,
+        'addressDetail': addressDetail.text,
+        'povertyStatus': povertyStatus.value,
+        
+        // Location data
+        'regionId': selectedRegion.value?.id,
+        'regionName': selectedRegion.value?.name ?? '',
+        'districtId': selectedDistrict.value?.id,
+        'districtName': selectedDistrict.value?.name ?? '',
+        'municipalityId': selectedMunicipality.value?.id,
+        'municipalityName': selectedMunicipality.value?.name ?? '',
+        'villageId': selectedVillage.value?.id,
+        'villageName': selectedVillage.value?.name ?? '',
+      };
 
-    final dbHelper = DatabaseHelper();
+      // Prepare head member data
+      Map<String, dynamic> headMemberData = {
+        'firstName': givenNameController.text,
+        'lastName': lastNameController.text,
+        'gender': gender.value,
+        'phone': phoneController.text,
+        'email': emailController.text,
+        'birthdate': birthdateController.text,
+        'maritalStatus': maritalStatus.value,
+        'disabilityStatus': disabilityStatus.value,
+        'identificationNo': identificationNoController.text,
+        'photo': photo.value != null ? await _encodePhotoToBase64(photo.value!) : '',
+      };
+      
+      // Calculate contribution before saving
+      final contribution = await calculateTotalContribution();
 
-    if (newEnrollment.value && isHead.value) {
-      // Insert new family and head member
-      await dbHelper.insertFamilyAndHeadMember(
-        enrollmentData['chfid'],
-        familyData,
-        '${enrollmentData['givenName']} ${enrollmentData['lastName']}',
-        enrollmentData['photo'],
-      );
-    } else {
-      // Insert as family member
-      await dbHelper.insertFamilyMember(
-        enrollmentData['headChfid'],
-        '${enrollmentData['givenName']} ${enrollmentData['lastName']}',
-        enrollmentData,
-        enrollmentData['photo'],
-      );
+      if (newEnrollment.value && isHead.value) {
+        // Insert new family with comprehensive data
+        final familyId = await dbHelper.insertCompleteFamilyWithHead(
+          familyData: familyData,
+          headMemberData: headMemberData,
+          membershipType: membershipType.value,
+          membershipLevel: membershipLevel.value,
+          areaType: areaType.value,
+          calculatedContribution: contribution,
+        );
+
+        // Save all additional family members
+        for (final member in familyMembers) {
+          if (!member.isHead) {
+            await dbHelper.insertFamilyMember(
+              familyId: familyId,
+              familyUuid: familyData['uuid'],
+              memberData: {
+                'chfid': member.chfid.isEmpty ? await dbHelper.generateUniqueChfid() : member.chfid,
+                'firstName': member.firstName,
+                'lastName': member.lastName,
+                'gender': member.gender,
+                'phone': member.phone,
+                'email': member.email,
+                'birthdate': member.birthdate,
+                'maritalStatus': member.maritalStatus,
+                'relationship': member.relationship,
+                'disabilityStatus': member.disabilityStatus,
+                'identificationNo': member.identificationNo,
+                'photo': member.photoPath ?? '',
+              },
+            );
+          }
+        }
+
+        return familyId;
+      } else {
+        // Insert as family member to existing family
+        final existingFamilyId = this.familyId.value;
+        
+        // Get existing family UUID
+        final familyData = await dbHelper.getFamilyById(existingFamilyId);
+        final familyUuid = familyData?['uuid'] ?? DatabaseHelper.generateMemberUUID();
+        
+        await dbHelper.insertFamilyMember(
+          familyId: existingFamilyId,
+          familyUuid: familyUuid,
+          memberData: {
+            'chfid': chfid,
+            'firstName': givenNameController.text,
+            'lastName': lastNameController.text,
+            'gender': gender.value,
+            'phone': phoneController.text,
+            'email': emailController.text,
+            'birthdate': birthdateController.text,
+            'maritalStatus': maritalStatus.value,
+            'relationship': relationShip.value,
+            'disabilityStatus': disabilityStatus.value,
+            'identificationNo': identificationNoController.text,
+            'photo': photo.value != null ? await _encodePhotoToBase64(photo.value!) : '',
+          },
+        );
+        
+        // Update family contribution after adding member
+        await dbHelper.updateFamilyContribution(existingFamilyId, contribution);
+        return existingFamilyId;
+      }
+    } catch (e) {
+      print('Error saving to local database: $e');
+      SnackBars.failure("Save Error", "Failed to save enrollment data: $e");
+      rethrow;
     }
   }
 
@@ -713,8 +811,8 @@ class EnrollmentController extends GetxController
   }
 
   void initializeTestData() {
-    // Populate test data for easier testing
-    chfidController.text = '1234567890';
+    // Don't populate CHFID - let it auto-generate
+    // chfidController.text = ''; // Leave empty to trigger auto-generation
     identificationNoController.text = '123456';
     lastNameController.text = 'Doe';
     givenNameController.text = 'John';
@@ -725,9 +823,10 @@ class EnrollmentController extends GetxController
     maritalStatus.value = 'Single';
     relationShip.value = 'Head';
     disabilityStatus.value = 'None';
-    membershipType.value = 'Paying'; // Story 3 requirement
-    membershipLevel.value = 'Level 1'; // Story 3 requirement
-
+    membershipType.value = 'Paying';
+    membershipLevel.value = 'Level 1';
+    areaType.value = 'Rural';
+    
     // Initialize location data
     _initializeLocationData();
   }
@@ -765,31 +864,52 @@ class EnrollmentController extends GetxController
     selectedVillage.value = stepVillages.first;
   }
 
-  void onLocationChanged(String type, dynamic value) {
-    // Handle location dropdown changes
-    switch (type) {
+  void onLocationChanged(String locationType, dynamic selectedLocation) {
+    // Handle location hierarchy changes
+    switch (locationType) {
       case 'Region':
-        selectedRegion.value = value;
-        // Reset dependent dropdowns
         selectedDistrict.value = null;
         selectedMunicipality.value = null;
         selectedVillage.value = null;
+        // Load districts for selected region
+        _loadDistrictsForRegion(selectedLocation?.id);
         break;
       case 'District':
-        selectedDistrict.value = value;
-        // Reset dependent dropdowns
         selectedMunicipality.value = null;
         selectedVillage.value = null;
+        // Load municipalities for selected district
+        _loadMunicipalitiesForDistrict(selectedLocation?.id);
         break;
       case 'Municipality':
-        selectedMunicipality.value = value;
-        // Reset dependent dropdown
         selectedVillage.value = null;
-        break;
-      case 'Village':
-        selectedVillage.value = value;
+        // Load villages for selected municipality
+        _loadVillagesForMunicipality(selectedLocation?.id);
         break;
     }
+  }
+
+  void _loadDistrictsForRegion(int? regionId) {
+    // Mock data - replace with actual API call
+    stepDistricts.value = [
+      District(id: 1, name: 'District 1'),
+      District(id: 2, name: 'District 2'),
+    ];
+  }
+
+  void _loadMunicipalitiesForDistrict(int? districtId) {
+    // Mock data - replace with actual API call
+    stepMunicipalities.value = [
+      Municipality(id: 1, name: 'Municipality 1'),
+      Municipality(id: 2, name: 'Municipality 2'),
+    ];
+  }
+
+  void _loadVillagesForMunicipality(int? municipalityId) {
+    // Mock data - replace with actual API call
+    stepVillages.value = [
+      Village(id: 1, name: 'Village 1'),
+      Village(id: 2, name: 'Village 2'),
+    ];
   }
 
   Future<void> scanQRCode(TextEditingController controller) async {
@@ -881,7 +1001,7 @@ class EnrollmentController extends GetxController
   }
 
   // Family Member Management Methods
-  void addFamilyMember() {
+  void addFamilyMember() async {
     // Validate current form
     if (givenNameController.text.isEmpty || lastNameController.text.isEmpty) {
       Get.snackbar(
@@ -893,11 +1013,17 @@ class EnrollmentController extends GetxController
       return;
     }
 
+    // Auto-generate CHFID if empty
+    String memberChfid = chfidController.text.trim();
+    if (memberChfid.isEmpty) {
+      final dbHelper = DatabaseHelper();
+      memberChfid = await dbHelper.generateUniqueChfid();
+      chfidController.text = memberChfid; // Update the UI
+    }
+
     // Create new family member from current form data
     final newMember = FamilyMember(
-      chfid: chfidController.text.isEmpty
-          ? _generateChfid()
-          : chfidController.text,
+      chfid: memberChfid,
       firstName: givenNameController.text,
       lastName: lastNameController.text,
       gender: gender.value,
@@ -1037,10 +1163,43 @@ class EnrollmentController extends GetxController
     }
   }
 
-  // Calculate total contribution based on family size
-  double calculateTotalContribution() {
-    if (familyMembers.isEmpty) return 0.0;
+  // Calculate total contribution based on configuration
+  var calculatedContribution = 0.0.obs;
+  var isCalculatingContribution = false.obs;
 
+  Future<double> calculateTotalContribution() async {
+    if (familyMembers.isEmpty || 
+        membershipType.value.isEmpty || 
+        membershipLevel.value.isEmpty || 
+        areaType.value.isEmpty) {
+      return 0.0;
+    }
+
+    try {
+      isCalculatingContribution(true);
+      
+      final contribution = await _contributionConfigService.calculateContribution(
+        membershipLevel: membershipLevel.value,
+        membershipType: membershipType.value,
+        areaType: areaType.value,
+        numberOfMembers: familyMembers.length,
+      );
+      
+      calculatedContribution.value = contribution;
+      return contribution;
+    } catch (e) {
+      print('Error calculating contribution: $e');
+      // Fallback to default calculation
+      return _getDefaultContribution();
+    } finally {
+      isCalculatingContribution(false);
+    }
+  }
+
+  // Default fallback calculation
+  double _getDefaultContribution() {
+    if (familyMembers.isEmpty) return 0.0;
+    
     double baseRate = 0.0;
     switch (membershipLevel.value) {
       case 'Level 1':
@@ -1053,8 +1212,65 @@ class EnrollmentController extends GetxController
         baseRate = membershipType.value == 'Paying' ? 200.0 : 100.0;
         break;
     }
-
     return baseRate * familyMembers.length;
+  }
+
+  // Recalculate contribution when relevant fields change
+  void _onMembershipDetailsChanged() {
+    if (membershipType.value.isNotEmpty && 
+        membershipLevel.value.isNotEmpty && 
+        areaType.value.isNotEmpty && 
+        familyMembers.isNotEmpty) {
+      calculateTotalContribution();
+    }
+  }
+
+  // Initialize configuration sync on controller start
+  @override
+  void onInit() {
+    super.onInit();
+    _initializeConfigSync();
+    
+    // Set up reactive listeners for membership details changes
+    ever(membershipType, (_) => _onMembershipDetailsChanged());
+    ever(membershipLevel, (_) => _onMembershipDetailsChanged());
+    ever(areaType, (_) => _onMembershipDetailsChanged());
+    ever(familyMembers, (_) => _onMembershipDetailsChanged());
+  }
+
+  Future<void> _initializeConfigSync() async {
+    try {
+      // Check if we need to sync configuration
+      if (await _contributionConfigService.shouldSyncConfig()) {
+        final syncSuccess = await _contributionConfigService.syncConfigFromBackend();
+        if (syncSuccess) {
+          print('Configuration synced successfully');
+        } else {
+          print('Configuration sync failed - using local data');
+        }
+      }
+    } catch (e) {
+      print('Error initializing config sync: $e');
+    }
+  }
+
+  // Force sync configuration manually
+  Future<void> syncConfiguration() async {
+    try {
+      isLoading(true);
+      final success = await _contributionConfigService.syncConfigFromBackend();
+      if (success) {
+        SnackBars.success("Success", "Configuration updated successfully!");
+        // Recalculate contribution with new config
+        await calculateTotalContribution();
+      } else {
+        SnackBars.failure("Sync Failed", "Unable to update configuration. Using local data.");
+      }
+    } catch (e) {
+      SnackBars.failure("Error", "Failed to sync configuration: $e");
+    } finally {
+      isLoading(false);
+    }
   }
 
   @override
@@ -1070,3 +1286,4 @@ class EnrollmentController extends GetxController
     super.onClose();
   }
 }
+

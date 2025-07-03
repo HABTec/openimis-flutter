@@ -17,7 +17,6 @@ class EnrollmentView extends GetView<EnrollmentController> {
     return Scaffold(
       backgroundColor: Get.theme.colorScheme.background,
       resizeToAvoidBottomInset: false,
-
       body: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle(
           statusBarColor: Get.theme.colorScheme.background,
@@ -27,6 +26,23 @@ class EnrollmentView extends GetView<EnrollmentController> {
         ),
         child:  SafeArea(child: Body()),
       ),
+      floatingActionButton: Obx(() => FloatingActionButton.extended(
+        onPressed: controller.isLoading.value ? null : () => controller.syncConfiguration(),
+        backgroundColor: Color(0xFF036273),
+        foregroundColor: Colors.white,
+        icon: controller.isLoading.value 
+            ? SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Icon(Icons.sync),
+        label: Text(controller.isLoading.value ? 'Syncing...' : 'Sync Rates'),
+      )),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 }
