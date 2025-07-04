@@ -391,6 +391,12 @@ class EnrollmentForm extends StatelessWidget {
                   ['Level 1', 'Level 2', 'Level 3'],
                 ),
                 SizedBox(height: 16),
+                buildDropdownFormField(
+                  controller.areaType,
+                  'Area Type *',
+                  ['Rural', 'City'],
+                ),
+                SizedBox(height: 16),
                 Container(
                   padding: EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -406,7 +412,7 @@ class EnrollmentForm extends StatelessWidget {
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Contribution will be calculated based on membership type and level',
+                          'Contribution will be calculated based on membership type, level, area, and number of members',
                           style: TextStyle(
                             fontSize: 12,
                             color: Color(0xFF036273),
@@ -781,6 +787,8 @@ class EnrollmentForm extends StatelessWidget {
                     'Membership Type', controller.membershipType.value),
                 _buildReviewRow(
                     'Membership Level', controller.membershipLevel.value),
+                _buildReviewRow(
+                    'Area Type', controller.areaType.value),
               ],
             ),
           ),
@@ -854,12 +862,38 @@ class EnrollmentForm extends StatelessWidget {
                     'Membership Type', controller.membershipType.value),
                 _buildReviewRow(
                     'Membership Level', controller.membershipLevel.value),
+                _buildReviewRow(
+                    'Area Type', controller.areaType.value),
                 Obx(() => _buildReviewRow(
                     'Total Members', '${controller.familyMembers.length}')),
                 Divider(),
-                Obx(() => _buildReviewRow('Total Contribution',
-                    '${controller.calculateTotalContribution().toStringAsFixed(2)} ETB',
-                    isTotal: true)),
+                Obx(() => controller.isCalculatingContribution.value
+                    ? Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 8),
+                            Text('Calculating contribution...'),
+                          ],
+                        ),
+                      )
+                    : FutureBuilder<double>(
+                        future: controller.calculateTotalContribution(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return _buildReviewRow('Total Contribution', 'Calculating...', isTotal: true);
+                          }
+                          final contribution = snapshot.data ?? 0.0;
+                          return _buildReviewRow('Total Contribution',
+                              '${contribution.toStringAsFixed(2)} ETB',
+                              isTotal: true);
+                        },
+                      )),
               ],
             ),
           ),

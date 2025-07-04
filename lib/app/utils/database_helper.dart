@@ -50,6 +50,10 @@ class DatabaseHelper {
         membership_level TEXT DEFAULT 'Level 1',
         area_type TEXT DEFAULT 'Rural',
         calculated_contribution REAL DEFAULT 0.0,
+        payment_status TEXT DEFAULT 'PENDING',  -- PENDING, PAID, FAILED
+        payment_date TEXT,
+        payment_method TEXT,
+        payment_reference TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
@@ -64,7 +68,9 @@ class DatabaseHelper {
         head INTEGER DEFAULT 0,      -- 1 for head, 0 for other members
         json_content TEXT,
         photo TEXT,
-        sync INTEGER DEFAULT 0,
+        sync INTEGER DEFAULT 0,      -- 0 = not synced, 1 = synced with server
+        sync_status TEXT DEFAULT 'PENDING',  -- PENDING, SYNCED, FAILED
+        sync_error TEXT,             -- Store any sync error messages
         family_id INTEGER,           -- Foreign key to link to the family
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(family_id) REFERENCES family(id) ON DELETE CASCADE
@@ -352,5 +358,104 @@ class DatabaseHelper {
     final chfid = '${nextId.toString().padLeft(5, '0')}-$userId';
     
     return chfid;
+  }
+
+  // Update payment status for a family
+  Future<void> updateFamilyPaymentStatus(int familyId, {
+    required String status,
+    String? paymentMethod,
+    String? paymentReference,
+  }) async {
+    final db = await database;
+    
+    Map<String, dynamic> updates = {
+      'payment_status': status,
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+    
+    if (status == 'PAID') {
+      updates['payment_date'] = DateTime.now().toIso8601String();
+      if (paymentMethod != null) updates['payment_method'] = paymentMethod;
+      if (paymentReference != null) updates['payment_reference'] = paymentReference;
+    }
+    
+    await db.update(
+      'family',
+      updates,
+      where: 'id = ?',
+      whereArgs: [familyId],
+    );
+  }
+
+  // Get families by payment status
+  Future<List<Map<String, dynamic>>> getFamiliesByPaymentStatus(String status) async {
+    final db = await database;
+    return await db.query(
+      'family',
+      where: 'payment_status = ?',
+      whereArgs: [status],
+    );
+  }
+
+  // Get unsynced families and members for sync
+  Future<List<Map<String, dynamic>>> getUnsyncedData() async {
+    final db = await database;
+    
+    // Get unsynced families
+    final List<Map<String, dynamic>> unsyncedFamilies = await db.query(
+      'family',
+      where: 'sync = 0',
+    );
+
+    List<Map<String, dynamic>> result = [];
+    
+    // For each unsynced family, get its members
+    for (var family in unsyncedFamilies) {
+      final List<Map<String, dynamic>> members = await db.query(
+        'members',
+        where: 'family_id = ?',
+        whereArgs: [family['id']],
+      );
+      
+      result.add({
+        'family': family,
+        'members': members,
+      });
+    }
+    
+    return result;
+  }
+
+  // Update sync status with error handling
+  Future<void> updateSyncStatusWithError(int familyId, {
+    required String status,
+    String? errorMessage,
+  }) async {
+    final db = await database;
+    
+    await db.transaction((txn) async {
+      // Update family sync status
+      await txn.update(
+        'family',
+        {
+          'sync': status == 'SYNCED' ? 1 : 0,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [familyId],
+      );
+      
+      // Update members sync status
+      await txn.update(
+        'members',
+        {
+          'sync': status == 'SYNCED' ? 1 : 0,
+          'sync_status': status,
+          'sync_error': errorMessage,
+        },
+        where: 'family_id = ?',
+        whereArgs: [familyId],
+      );
+    });
   }
 }
