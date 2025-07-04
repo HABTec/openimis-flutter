@@ -19,8 +19,8 @@ dependencies:
   qr_code_scanner: 1.0.0
   qr_flutter:
   local_auth: ^2.1.4
-  sqflite: ^2.0.0+4
-  path: ^1.8.0
+  sqflite: ^2.2.8+4
+  path: ^1.8.3
   firebase_core:
   firebase_messaging:
   flutter_svg:
@@ -50,7 +50,7 @@ dependencies:
   expandable: 5.0.1
   khalti_flutter: ^3.0.0
   flutter_local_notifications:
-  connectivity_plus: ^5.0.2
+  connectivity_plus: ^4.0.1
   webview_flutter: 3.0.4
   screenshot: ^2.1.0
   path_provider: ^2.1.1
