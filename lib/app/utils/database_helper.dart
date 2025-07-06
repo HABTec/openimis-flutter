@@ -1,6 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:convert';
+import '../data/local/services/contribution_config_service.dart';
+import '../modules/auth/controllers/auth_controller.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
@@ -20,13 +22,16 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'family_enrollment.db');
     return await openDatabase(
       path,
-      version: 4, // Update version to trigger migrations
+      version: 5, // Update version to trigger migrations
       onCreate: (db, version) async {
         await _createTables(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await _migrateToVersion2(db);
+        }
+        if (oldVersion < 5) {
+          await _migrateToVersion5(db);
         }
       },
     );
@@ -40,7 +45,17 @@ class DatabaseHelper {
         chfid TEXT NOT NULL UNIQUE,
         json_content TEXT,
         photo TEXT,
-        sync INTEGER DEFAULT 0
+        sync INTEGER DEFAULT 0,
+        membership_type TEXT DEFAULT 'Paying',
+        membership_level TEXT DEFAULT 'Level 1',
+        area_type TEXT DEFAULT 'Rural',
+        calculated_contribution REAL DEFAULT 0.0,
+        payment_status TEXT DEFAULT 'PENDING',  -- PENDING, PAID, FAILED
+        payment_date TEXT,
+        payment_method TEXT,
+        payment_reference TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     ''');
 
@@ -53,32 +68,76 @@ class DatabaseHelper {
         head INTEGER DEFAULT 0,      -- 1 for head, 0 for other members
         json_content TEXT,
         photo TEXT,
-        sync INTEGER DEFAULT 0,
+        sync INTEGER DEFAULT 0,      -- 0 = not synced, 1 = synced with server
+        sync_status TEXT DEFAULT 'PENDING',  -- PENDING, SYNCED, FAILED
+        sync_error TEXT,             -- Store any sync error messages
         family_id INTEGER,           -- Foreign key to link to the family
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(family_id) REFERENCES family(id) ON DELETE CASCADE
       );
     ''');
+
+    // Create contribution config table
+    await ContributionConfigService.createTable(db);
   }
 
   Future<void> _migrateToVersion2(Database db) async {
     // Example migration steps if needed for version upgrade
   }
 
-  // Insert family and head member
-  Future<void> insertFamilyAndHeadMember(
-      String chfid, Map<String, dynamic> familyDetails, String headName, String photoPath) async {
+  Future<void> _migrateToVersion5(Database db) async {
+    // Add new columns to family table
+    try {
+      await db.execute('ALTER TABLE family ADD COLUMN membership_type TEXT DEFAULT "Paying"');
+      await db.execute('ALTER TABLE family ADD COLUMN membership_level TEXT DEFAULT "Level 1"');
+      await db.execute('ALTER TABLE family ADD COLUMN area_type TEXT DEFAULT "Rural"');
+      await db.execute('ALTER TABLE family ADD COLUMN calculated_contribution REAL DEFAULT 0.0');
+      await db.execute('ALTER TABLE family ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP');
+      await db.execute('ALTER TABLE family ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP');
+    } catch (e) {
+      // Columns might already exist
+      print('Migration note: $e');
+    }
+
+    try {
+      await db.execute('ALTER TABLE members ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP');
+    } catch (e) {
+      print('Migration note: $e');
+    }
+
+    // Create contribution config table
+    await ContributionConfigService.createTable(db);
+  }
+
+  // Insert family and head member with enhanced data
+  Future<int> insertFamilyAndHeadMember(
+      String chfid, 
+      Map<String, dynamic> familyDetails, 
+      String headName, 
+      String photoPath,
+      {String membershipType = 'Paying',
+      String membershipLevel = 'Level 1',
+      String areaType = 'Rural',
+      double calculatedContribution = 0.0}) async {
     final db = await database;
 
     // Family data
     String familyJsonContent = jsonEncode(familyDetails);
+    int familyId = 0;
 
     await db.transaction((txn) async {
       // Insert into family table
-      await txn.insert('family', {
+      familyId = await txn.insert('family', {
         'chfid': chfid,
         'json_content': familyJsonContent,
         'photo': photoPath,
-        'sync': 0
+        'sync': 0,
+        'membership_type': membershipType,
+        'membership_level': membershipLevel,
+        'area_type': areaType,
+        'calculated_contribution': calculatedContribution,
+        'created_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
       });
 
       // Insert head member into members table
@@ -88,26 +147,76 @@ class DatabaseHelper {
         'head': 1,
         'json_content': familyJsonContent,
         'photo': photoPath,
-        'sync': 0
+        'sync': 0,
+        'family_id': familyId,
+        'created_at': DateTime.now().toIso8601String(),
       });
     });
+
+    return familyId;
   }
 
   // Insert additional family members
   Future<void> insertFamilyMember(
-      String chfid, String memberName, Map<String, dynamic> memberDetails, String photoPath) async {
+      String familyChfid, String memberName, Map<String, dynamic> memberDetails, String photoPath, int familyId) async {
     final db = await database;
 
     String memberJsonContent = jsonEncode(memberDetails);
 
     await db.insert('members', {
-      'chfid': chfid,
+      'chfid': memberDetails['chfid'] ?? _generateChfid(),
       'name': memberName,
       'head': 0,
       'json_content': memberJsonContent,
       'photo': photoPath,
-      'sync': 0
+      'sync': 0,
+      'family_id': familyId,
+      'created_at': DateTime.now().toIso8601String(),
     });
+  }
+
+  String _generateChfid() {
+    return 'CHF${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+  }
+
+  // Update family contribution
+  Future<void> updateFamilyContribution(int familyId, double contribution) async {
+    final db = await database;
+    await db.update(
+      'family',
+      {
+        'calculated_contribution': contribution,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [familyId],
+    );
+  }
+
+  // Update family enrollment details
+  Future<void> updateFamilyDetails(int familyId, {
+    String? membershipType,
+    String? membershipLevel,
+    String? areaType,
+    double? calculatedContribution,
+  }) async {
+    final db = await database;
+    
+    Map<String, dynamic> updates = {
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+    
+    if (membershipType != null) updates['membership_type'] = membershipType;
+    if (membershipLevel != null) updates['membership_level'] = membershipLevel;
+    if (areaType != null) updates['area_type'] = areaType;
+    if (calculatedContribution != null) updates['calculated_contribution'] = calculatedContribution;
+    
+    await db.update(
+      'family',
+      updates,
+      where: 'id = ?',
+      whereArgs: [familyId],
+    );
   }
 
   // Retrieve all family records
@@ -230,6 +339,123 @@ class DatabaseHelper {
     await db.transaction((txn) async {
       await txn.update('family', {'sync': 1}, where: 'chfid = ?', whereArgs: [chfid]);
       await txn.update('members', {'sync': 1}, where: 'chfid = ?', whereArgs: [chfid]);
+    });
+  }
+
+  // Generate unique CHFID with auto-increment and user ID
+  Future<String> generateUniqueChfid() async {
+    final db = await database;
+    
+    // Get the current max ID from the family table
+    final result = await db.rawQuery('SELECT MAX(id) as maxId FROM family');
+    final maxId = (result.first['maxId'] as int?) ?? 0;
+    final nextId = maxId + 1;
+    
+    // Get current user ID from AuthController
+    final userId = AuthController.to.currentUser?.id ?? 'unknown';
+    
+    // Format: 00001-userid
+    final chfid = '${nextId.toString().padLeft(5, '0')}-$userId';
+    
+    return chfid;
+  }
+
+  // Update payment status for a family
+  Future<void> updateFamilyPaymentStatus(int familyId, {
+    required String status,
+    String? paymentMethod,
+    String? paymentReference,
+  }) async {
+    final db = await database;
+    
+    Map<String, dynamic> updates = {
+      'payment_status': status,
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+    
+    if (status == 'PAID') {
+      updates['payment_date'] = DateTime.now().toIso8601String();
+      if (paymentMethod != null) updates['payment_method'] = paymentMethod;
+      if (paymentReference != null) updates['payment_reference'] = paymentReference;
+    }
+    
+    await db.update(
+      'family',
+      updates,
+      where: 'id = ?',
+      whereArgs: [familyId],
+    );
+  }
+
+  // Get families by payment status
+  Future<List<Map<String, dynamic>>> getFamiliesByPaymentStatus(String status) async {
+    final db = await database;
+    return await db.query(
+      'family',
+      where: 'payment_status = ?',
+      whereArgs: [status],
+    );
+  }
+
+  // Get unsynced families and members for sync
+  Future<List<Map<String, dynamic>>> getUnsyncedData() async {
+    final db = await database;
+    
+    // Get unsynced families
+    final List<Map<String, dynamic>> unsyncedFamilies = await db.query(
+      'family',
+      where: 'sync = 0',
+    );
+
+    List<Map<String, dynamic>> result = [];
+    
+    // For each unsynced family, get its members
+    for (var family in unsyncedFamilies) {
+      final List<Map<String, dynamic>> members = await db.query(
+        'members',
+        where: 'family_id = ?',
+        whereArgs: [family['id']],
+      );
+      
+      result.add({
+        'family': family,
+        'members': members,
+      });
+    }
+    
+    return result;
+  }
+
+  // Update sync status with error handling
+  Future<void> updateSyncStatusWithError(int familyId, {
+    required String status,
+    String? errorMessage,
+  }) async {
+    final db = await database;
+    
+    await db.transaction((txn) async {
+      // Update family sync status
+      await txn.update(
+        'family',
+        {
+          'sync': status == 'SYNCED' ? 1 : 0,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [familyId],
+      );
+      
+      // Update members sync status
+      await txn.update(
+        'members',
+        {
+          'sync': status == 'SYNCED' ? 1 : 0,
+          'sync_status': status,
+          'sync_error': errorMessage,
+        },
+        where: 'family_id = ?',
+        whereArgs: [familyId],
+      );
     });
   }
 }
