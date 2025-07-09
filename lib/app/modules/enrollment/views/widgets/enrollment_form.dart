@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:heroicons/heroicons.dart';
 import 'package:openimis_app/app/modules/enrollment/controller/LocationDto.dart';
 import '../../controller/enrollment_controller.dart';
+import 'offline_payment_view.dart';
 
 class EnrollmentForm extends StatelessWidget {
   final int? enrollmentId;
@@ -27,6 +28,26 @@ class EnrollmentForm extends StatelessWidget {
         backgroundColor: Color(0xFF036273),
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          Obx(() => IconButton(
+                onPressed: controller.isLoading.value
+                    ? null
+                    : () => controller.syncConfiguration(),
+                icon: controller.isLoading.value
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : Icon(Icons.sync, color: Colors.white),
+                tooltip: 'Sync Rates',
+              )),
+          SizedBox(width: 8),
+        ],
       ),
       body: Obx(() {
         return Column(
@@ -44,12 +65,12 @@ class EnrollmentForm extends StatelessWidget {
               child: Column(
                 children: [
                   Text(
-                    'Step ${controller.currentStep.value} of 4',
+                    'Step ${controller.currentStep.value} of 5',
                     style: TextStyle(color: Colors.white, fontSize: 16),
                   ),
                   SizedBox(height: 8),
                   LinearProgressIndicator(
-                    value: controller.currentStep.value / 4,
+                    value: controller.currentStep.value / 5,
                     backgroundColor: Colors.white.withOpacity(0.3),
                     valueColor:
                         AlwaysStoppedAnimation<Color>(Color(0xFFB7D3D7)),
@@ -108,6 +129,8 @@ class EnrollmentForm extends StatelessWidget {
       case 3:
         return _buildFamilyStep();
       case 4:
+        return _buildPaymentMethodStep();
+      case 5:
         return _buildReviewStep();
       default:
         return _buildPersonalInfoStep(context);
@@ -731,6 +754,256 @@ class EnrollmentForm extends StatelessWidget {
     );
   }
 
+  Widget _buildPaymentMethodStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Payment Method',
+          style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF036273)),
+        ),
+        SizedBox(height: 20),
+
+        Text(
+          'Choose how you would like to pay for your membership:',
+          style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+        ),
+        SizedBox(height: 24),
+
+        // Payment method selection cards
+        Obx(() => Column(
+              children: [
+                // Online Payment Card
+                GestureDetector(
+                  onTap: () {
+                    controller.isOfflinePayment.value = false;
+                    controller.paymentMethod.value = 'online';
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: !controller.isOfflinePayment.value
+                          ? Color(0xFF036273).withOpacity(0.1)
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: !controller.isOfflinePayment.value
+                            ? Color(0xFF036273)
+                            : Colors.grey[300]!,
+                        width: 2,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.credit_card,
+                          color: !controller.isOfflinePayment.value
+                              ? Color(0xFF036273)
+                              : Colors.grey[600],
+                          size: 32,
+                        ),
+                        SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Online Payment',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: !controller.isOfflinePayment.value
+                                      ? Color(0xFF036273)
+                                      : Colors.grey[800],
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Pay instantly using ArifPay gateway',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (!controller.isOfflinePayment.value)
+                          Icon(
+                            Icons.check_circle,
+                            color: Color(0xFF036273),
+                            size: 24,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                SizedBox(height: 16),
+
+                // Offline Payment Card
+                GestureDetector(
+                  onTap: () {
+                    controller.isOfflinePayment.value = true;
+                    controller.paymentMethod.value = 'offline_manual';
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: controller.isOfflinePayment.value
+                          ? Color(0xFF036273).withOpacity(0.1)
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: controller.isOfflinePayment.value
+                            ? Color(0xFF036273)
+                            : Colors.grey[300]!,
+                        width: 2,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.receipt_long,
+                          color: controller.isOfflinePayment.value
+                              ? Color(0xFF036273)
+                              : Colors.grey[600],
+                          size: 32,
+                        ),
+                        SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Offline Payment',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: controller.isOfflinePayment.value
+                                      ? Color(0xFF036273)
+                                      : Colors.grey[800],
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Pay using PoS machine and enter transaction ID',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (controller.isOfflinePayment.value)
+                          Icon(
+                            Icons.check_circle,
+                            color: Color(0xFF036273),
+                            size: 24,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Show offline payment details if selected
+                if (controller.isOfflinePayment.value) ...[
+                  SizedBox(height: 24),
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.blue,
+                        width: 1,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Offline Payment Instructions',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue[800],
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          '1. Complete payment using your PoS machine\n'
+                          '2. Get the transaction receipt\n'
+                          '3. Enter transaction ID manually or scan receipt\n'
+                          '4. Your payment will be verified later',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.blue[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            )),
+
+        SizedBox(height: 24),
+
+        // Payment amount display
+        FutureBuilder<double>(
+          future: controller.calculateTotalContribution(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Center(child: CircularProgressIndicator());
+            }
+            final contribution = snapshot.data ?? 0.0;
+            return Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Color(0xFF036273).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Color(0xFF036273),
+                  width: 2,
+                ),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    'Total Amount to Pay',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF036273),
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    '${contribution.toStringAsFixed(2)} ETB',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF036273),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
   Widget _buildReviewStep() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -787,8 +1060,7 @@ class EnrollmentForm extends StatelessWidget {
                     'Membership Type', controller.membershipType.value),
                 _buildReviewRow(
                     'Membership Level', controller.membershipLevel.value),
-                _buildReviewRow(
-                    'Area Type', controller.areaType.value),
+                _buildReviewRow('Area Type', controller.areaType.value),
               ],
             ),
           ),
@@ -862,10 +1134,22 @@ class EnrollmentForm extends StatelessWidget {
                     'Membership Type', controller.membershipType.value),
                 _buildReviewRow(
                     'Membership Level', controller.membershipLevel.value),
-                _buildReviewRow(
-                    'Area Type', controller.areaType.value),
+                _buildReviewRow('Area Type', controller.areaType.value),
                 Obx(() => _buildReviewRow(
                     'Total Members', '${controller.familyMembers.length}')),
+
+                // Payment Method Information
+                Obx(() => _buildReviewRow(
+                    'Payment Method',
+                    controller.isOfflinePayment.value
+                        ? 'Offline Payment'
+                        : 'Online Payment')),
+                Obx(() => controller.isOfflinePayment.value &&
+                        controller.transactionId.value.isNotEmpty
+                    ? _buildReviewRow(
+                        'Transaction ID', controller.transactionId.value)
+                    : Container()),
+
                 Divider(),
                 Obx(() => controller.isCalculatingContribution.value
                     ? Padding(
@@ -885,8 +1169,11 @@ class EnrollmentForm extends StatelessWidget {
                     : FutureBuilder<double>(
                         future: controller.calculateTotalContribution(),
                         builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return _buildReviewRow('Total Contribution', 'Calculating...', isTotal: true);
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return _buildReviewRow(
+                                'Total Contribution', 'Calculating...',
+                                isTotal: true);
                           }
                           final contribution = snapshot.data ?? 0.0;
                           return _buildReviewRow('Total Contribution',
@@ -956,43 +1243,100 @@ class EnrollmentForm extends StatelessWidget {
                     padding: EdgeInsets.symmetric(vertical: 16),
                   ),
                 )
-              : Column(
-                  children: [
-                    ElevatedButton(
-                      onPressed: controller.onEnrollmentSubmitOffline,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.save),
-                          SizedBox(width: 8),
-                          Text('Save Offline'),
-                        ],
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        padding: EdgeInsets.symmetric(vertical: 16),
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    ElevatedButton(
-                      onPressed: controller.onEnrollmentSubmitOnline,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.payment),
-                          SizedBox(width: 8),
-                          Text('Submit & Pay'),
-                        ],
-                      ),
+              : controller.currentStep.value == 4
+                  ? ElevatedButton(
+                      onPressed: controller.nextStep,
+                      child: Text('Continue'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Color(0xFF036273),
                         foregroundColor: Colors.white,
                         padding: EdgeInsets.symmetric(vertical: 16),
                       ),
-                    ),
-                  ],
-                ),
+                    )
+                  : Obx(() => controller.isOfflinePayment.value
+                      ? Column(
+                          children: [
+                            ElevatedButton(
+                              onPressed: () {
+                                // Show offline payment dialog
+                                Get.bottomSheet(
+                                  Container(
+                                    height: Get.height * 0.8,
+                                    child: OfflinePaymentView(),
+                                  ),
+                                  isScrollControlled: true,
+                                );
+                              },
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.receipt_long),
+                                  SizedBox(width: 8),
+                                  Text('Enter Transaction ID'),
+                                ],
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange,
+                                foregroundColor: Colors.white,
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            ElevatedButton(
+                              onPressed: controller.onEnrollmentSubmitOffline,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.save),
+                                  SizedBox(width: 8),
+                                  Text('Save for Later'),
+                                ],
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          children: [
+                            ElevatedButton(
+                              onPressed: controller.onEnrollmentSubmitOnline,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.payment),
+                                  SizedBox(width: 8),
+                                  Text('Proceed to Payment'),
+                                ],
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Color(0xFF036273),
+                                foregroundColor: Colors.white,
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            ElevatedButton(
+                              onPressed: controller.onEnrollmentSubmitOffline,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.save),
+                                  SizedBox(width: 8),
+                                  Text('Save for Later'),
+                                ],
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                              ),
+                            ),
+                          ],
+                        )),
         ),
       ],
     );
