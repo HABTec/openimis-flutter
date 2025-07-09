@@ -22,36 +22,52 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # 💾 Cache Gradle dependencies
-      - name: Cache Gradle dependencies
+      # 🐦 Set up Flutter
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.0'  # Use stable Flutter version
+          channel: 'stable'
+
+      # 💾 Cache Flutter dependencies
+      - name: Cache Flutter dependencies
         uses: actions/cache@v4
         with:
           path: |
+            ~/.pub-cache
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.lock') }}
           restore-keys: |
-            ${{ runner.os }}-gradle-
+            ${{ runner.os }}-flutter-
+
+      # 📦 Get Flutter dependencies
+      - name: Get Flutter dependencies
+        run: flutter pub get
 
       # 🔑 Decode Keystore from Secrets
       - name: Decode Keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/keystore.jks
 
+      # 🔐 Create key.properties file
+      - name: Create key.properties
+        run: |
+          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" > android/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
+          echo "storeFile=app/keystore.jks" >> android/key.properties
+
       # 🛠️ Build Signed APK
       - name: Build Signed APK
         run: |
-          cd android
-          ./gradlew assembleRelease -Pandroid.injected.signing.store.file=keystore.jks \
-                                     -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
-                                     -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
-                                     -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+          flutter build apk --release
 
       # 🚀 Upload Signed APK to GitHub Releases
       - name: Create Release and Upload APK
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/release/app-release.apk
+          files: build/app/outputs/flutter-apk/app-release.apk
           tag_name: latest
           name: Latest Release from Main Branch
           body: |
@@ -63,8 +79,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 🧹 Cleanup Keystore
-      - name: Remove Keystore
+      # 🧹 Cleanup Keystore and key.properties
+      - name: Remove Keystore and key.properties
         if: always()
         run: |
           rm -f android/app/keystore.jks
+          rm -f android/key.properties
