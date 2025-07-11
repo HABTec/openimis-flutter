@@ -1,0 +1,25 @@
+name: Get Available Branches
+
+on:
+  workflow_call:
+    outputs:
+      branch-list:
+        description: "JSON array of available branches"
+        value: ${{ jobs.list-branches.outputs.branches }}
+
+jobs:
+  list-branches:
+    runs-on: ubuntu-latest
+    outputs:
+      branches: ${{ steps.get-branches.outputs.branches }}
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Get branches
+        id: get-branches
+        run: |
+          BRANCHES=$(git branch -r | sed 's/origin\///' | grep -v 'HEAD' | jq -R -s -c 'split("\n")[:-1]')
+          echo "branches=$BRANCHES" >> $GITHUB_OUTPUT 

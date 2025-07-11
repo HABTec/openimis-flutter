@@ -4,10 +4,20 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:  # Allows manual triggering
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build from'
+        required: true
+        type: choice
+        options: ${{ fromJson(needs.get-branches.outputs.branch-list) }}
 
 jobs:
+  get-branches:
+    uses: ./.github/workflows/get-branches.yml
+
   build:
+    needs: get-branches
     name: Build Signed APK
     runs-on: ubuntu-latest
 
@@ -15,6 +25,9 @@ jobs:
       # 📥 Checkout the code
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+          fetch-depth: 0  # Fetch all history for all branches
 
       # ⚙️ Set up JDK
       - name: Set up JDK 17
