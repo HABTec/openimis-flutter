@@ -145,6 +145,22 @@ class EnrollmentRepository implements IEnrollmentRepository<EnrollmentInDto> {
     }
   }
 
+  // Sync family data with server
+  Future<ApiResponse> syncFamilyData(Map<String, dynamic> data) async {
+    try {
+      final response = await service.enrollmentR(data);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return ApiResponse.success(true, message: "Sync successful.");
+      }
+      return ApiResponse.failure(response.data['message']);
+    } on DioError catch (e) {
+      if (e.response != null && e.response!.data != null) {
+        return ApiResponse.failure(e.response!.data['message']);
+      }
+      return ApiResponse.failure(e.message ?? 'Sync failed');
+    }
+  }
+
 
 
 

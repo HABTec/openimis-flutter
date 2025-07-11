@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../base/status.dart';
-import '../../dto/company/Company_out_dto.dart';
+import '../../dto/company/company_out_dto.dart';
 import '../../exceptions/dio_exceptions.dart';
 import '../../services/company/i_company_service.dart';
 import 'i_company_repository.dart';

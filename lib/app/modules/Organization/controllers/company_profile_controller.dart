@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../data/remote/base/status.dart';
-import '../../../data/remote/dto/company/Company_out_dto.dart';
+import '../../../data/remote/dto/company/company_out_dto.dart';
 import '../../../data/remote/dto/enrollment/enrollment_in_dto.dart';
 import '../../../data/remote/repositories/company/company_repository.dart';
 import '../../../di/locator.dart';

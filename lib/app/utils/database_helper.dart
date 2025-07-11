@@ -458,4 +458,49 @@ class DatabaseHelper {
       );
     });
   }
+
+  // Generate a unique member UUID
+  static String generateMemberUUID() {
+    return 'MBR-${DateTime.now().millisecondsSinceEpoch}-${(DateTime.now().microsecond % 1000).toString().padLeft(3, '0')}';
+  }
+
+  // Insert complete family with head member
+  Future<int> insertCompleteFamilyWithHead(
+    Map<String, dynamic> familyData,
+    Map<String, dynamic> headMemberData,
+    String photoPath
+  ) async {
+    final db = await database;
+    int familyId = 0;
+
+    await db.transaction((txn) async {
+      // Insert family
+      familyId = await txn.insert('family', {
+        'chfid': familyData['chfid'],
+        'json_content': jsonEncode(familyData),
+        'photo': photoPath,
+        'sync': 0,
+        'membership_type': familyData['membershipType'] ?? 'Paying',
+        'membership_level': familyData['membershipLevel'] ?? 'Level 1',
+        'area_type': familyData['areaType'] ?? 'Rural',
+        'calculated_contribution': familyData['calculatedContribution'] ?? 0.0,
+        'created_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+
+      // Insert head member
+      await txn.insert('members', {
+        'chfid': headMemberData['chfid'],
+        'name': '${headMemberData['givenName']} ${headMemberData['lastName']}',
+        'head': 1,
+        'json_content': jsonEncode(headMemberData),
+        'photo': photoPath,
+        'sync': 0,
+        'family_id': familyId,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+    });
+
+    return familyId;
+  }
 }
