@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: 'Branch to build from'
+        description: 'Branch to build from (e.g. main, develop, feature/...)'
         required: true
-        type: choice
-        options: ${{ fromJson(needs.get-branches.outputs.branch-list) }}
+        type: string
+        default: 'main'
 
 jobs:
   get-branches:
