@@ -13,11 +13,7 @@ on:
         default: 'main'
 
 jobs:
-  get-branches:
-    uses: ./.github/workflows/get-branches.yml
-
   build:
-    needs: get-branches
     name: Build Signed APK
     runs-on: ubuntu-latest
 
@@ -27,7 +23,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.branch }}
-          fetch-depth: 0  # Fetch all history for all branches
 
       # ⚙️ Set up JDK
       - name: Set up JDK 17
