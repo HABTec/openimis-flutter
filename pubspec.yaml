@@ -57,6 +57,8 @@ dependencies:
   share_plus: ^7.2.1
   permission_handler: ^11.0.1
   device_info_plus: ^9.1.0
+  google_mlkit_text_recognition: ^0.10.0
+  camera: ^0.10.5+5
   flutter: 
     sdk: flutter
 

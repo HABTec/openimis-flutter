@@ -35,7 +35,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.0'  # Use stable Flutter version
+          flutter-version: '3.19.0'
           channel: 'stable'
 
       # 💾 Cache Flutter dependencies
@@ -54,23 +54,21 @@ jobs:
       - name: Get Flutter dependencies
         run: flutter pub get
 
-      # 🔑 Decode Keystore from Secrets
-      - name: Decode Keystore
+      # 🔑 Verify keystore
+      - name: Check keystore
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/keystore.jks
-
-      # 🔐 Create key.properties file
-      - name: Create key.properties
-        run: |
-          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" > android/key.properties
-          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
-          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
-          echo "storeFile=app/keystore.jks" >> android/key.properties
+          if [ ! -f android/app/keystore.jks ]; then
+            echo "Error: keystore.jks not found in android/app directory"
+            exit 1
+          fi
+          if [ ! -f android/key.properties ]; then
+            echo "Error: key.properties not found in android directory"
+            exit 1
+          fi
 
       # 🛠️ Build Signed APK
       - name: Build Signed APK
-        run: |
-          flutter build apk --release
+        run: flutter build apk --release
 
       # 🚀 Upload Signed APK to GitHub Releases
       - name: Create Release and Upload APK
@@ -81,16 +79,9 @@ jobs:
           name: Latest Release from Main Branch
           body: |
             🚀 **New Signed APK Release**
-            - Triggered by a push to the **main** branch.
+            - Built from branch: ${{ github.event.inputs.branch || 'main' }}
             - Automatically signed and uploaded via GitHub Actions.
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 🧹 Cleanup Keystore and key.properties
-      - name: Remove Keystore and key.properties
-        if: always()
-        run: |
-          rm -f android/app/keystore.jks
-          rm -f android/key.properties

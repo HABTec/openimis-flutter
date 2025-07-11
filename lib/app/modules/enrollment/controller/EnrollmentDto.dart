@@ -26,6 +26,11 @@ class EnrollmentDto implements IDto {
     this.relationShip,
     this.disabilityStatus,
     this.syncStatus = 0,
+    this.transactionId,
+    this.paymentMethod,
+    this.paymentDate,
+    this.receiptImagePath,
+    this.isOfflinePayment = false,
   });
 
   EnrollmentDto.fromJson(Map<String, dynamic> json) {
@@ -52,6 +57,13 @@ class EnrollmentDto implements IDto {
     relationShip = json['relationShip'];
     disabilityStatus = json['disabilityStatus'];
     syncStatus = json['syncStatus'] ?? 0;
+    transactionId = json['transactionId'];
+    paymentMethod = json['paymentMethod'];
+    paymentDate = json['paymentDate'] != null
+        ? DateTime.parse(json['paymentDate'])
+        : null;
+    receiptImagePath = json['receiptImagePath'];
+    isOfflinePayment = json['isOfflinePayment'] ?? false;
 
     family = json['family'] != null ? Family.fromJson(json['family']) : null;
   }
@@ -80,6 +92,11 @@ class EnrollmentDto implements IDto {
   String? relationShip;
   String? disabilityStatus; // None, Physical, Visual, Hearing, Mental, Other
   int? syncStatus; // 0 = not synced, 1 = synced
+  String? transactionId; // Transaction ID for offline payments
+  String? paymentMethod; // online, offline_manual, offline_ocr
+  DateTime? paymentDate; // Date when payment was made
+  String? receiptImagePath; // Path to stored receipt image
+  bool? isOfflinePayment; // Flag to indicate if it's an offline payment
 
   EnrollmentDto copyWith({
     String? chfid,
@@ -106,6 +123,11 @@ class EnrollmentDto implements IDto {
     String? relationShip,
     String? disabilityStatus,
     int? syncStatus,
+    String? transactionId,
+    String? paymentMethod,
+    DateTime? paymentDate,
+    String? receiptImagePath,
+    bool? isOfflinePayment,
   }) =>
       EnrollmentDto(
         chfid: chfid ?? this.chfid,
@@ -132,6 +154,11 @@ class EnrollmentDto implements IDto {
         family: family ?? this.family,
         disabilityStatus: disabilityStatus ?? this.disabilityStatus,
         syncStatus: syncStatus ?? this.syncStatus,
+        transactionId: transactionId ?? this.transactionId,
+        paymentMethod: paymentMethod ?? this.paymentMethod,
+        paymentDate: paymentDate ?? this.paymentDate,
+        receiptImagePath: receiptImagePath ?? this.receiptImagePath,
+        isOfflinePayment: isOfflinePayment ?? this.isOfflinePayment,
       );
 
   Map<String, dynamic> toJson() {
@@ -159,6 +186,11 @@ class EnrollmentDto implements IDto {
     map['relationShip'] = relationShip;
     map['disabilityStatus'] = disabilityStatus;
     map['syncStatus'] = syncStatus;
+    map['transactionId'] = transactionId;
+    map['paymentMethod'] = paymentMethod;
+    map['paymentDate'] = paymentDate?.toIso8601String();
+    map['receiptImagePath'] = receiptImagePath;
+    map['isOfflinePayment'] = isOfflinePayment;
     if (family != null) {
       map['family'] = family!.toJson();
     }
