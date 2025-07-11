@@ -4,7 +4,7 @@ import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:heroicons/heroicons.dart';
 
-import '../../../../data/remote/dto/company/Company_out_dto.dart';
+import '../../../../data/remote/dto/company/company_out_dto.dart';
 import '../../controllers/company_profile_controller.dart';
 
 

@@ -13,6 +13,9 @@ import 'package:openimis_app/app/modules/enrollment/controller/LocationDto.dart'
 import 'package:openimis_app/app/modules/enrollment/controller/MembershipDto.dart';
 import 'package:openimis_app/app/data/remote/services/payment/arifpay_service.dart';
 import 'package:openimis_app/app/data/local/services/contribution_config_service.dart';
+import 'package:uuid/uuid.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'dart:async';
 
 import '../../../data/remote/base/status.dart';
 import '../../../di/locator.dart';
@@ -279,6 +282,14 @@ class EnrollmentController extends GetxController
         filteredEnrollments.map<int>((enrollment) => enrollment['id'] as int),
       );
     }
+    // Initialize configuration sync
+    _initializeConfigSync();
+
+    // Set up reactive listeners for membership details changes
+    ever(membershipType, (_) => _onMembershipDetailsChanged());
+    ever(membershipLevel, (_) => _onMembershipDetailsChanged());
+    ever(areaType, (_) => _onMembershipDetailsChanged());
+    ever(familyMembers, (_) => _onMembershipDetailsChanged());
   }
 
   Future<void> fetchEnrollments() async {
@@ -443,7 +454,16 @@ class EnrollmentController extends GetxController
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Amount: ${calculateTotalContribution()} ETB'),
+              FutureBuilder<double>(
+                future: calculateTotalContribution(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasData) {
+                    return Text('Amount: ${snapshot.data} ETB');
+                  } else {
+                    return Text('Amount: Calculating... ETB');
+                  }
+                },
+              ),
               Text('Currency: ETB'),
               Text('Description: CBHI Membership Payment'),
               SizedBox(height: 16),
@@ -457,6 +477,7 @@ class EnrollmentController extends GetxController
       // Simulate payment processing
       await Future.delayed(Duration(seconds: 2));
 
+      final contributionAmount = await calculateTotalContribution();
       final response = await _arifpayService.initiatePayment(
         amount: await calculateTotalContribution(),
         currency: 'ETB',
@@ -604,6 +625,10 @@ class EnrollmentController extends GetxController
         'confirmationNumber': confirmationNumber.text,
         'addressDetail': addressDetail.text,
         'povertyStatus': povertyStatus.value,
+        'membershipType': membershipType.value,
+        'membershipLevel': membershipLevel.value,
+        'areaType': areaType.value,
+        'calculatedContribution': contribution,
 
         // Location data
         'regionId': selectedRegion.value?.id,
@@ -616,11 +641,21 @@ class EnrollmentController extends GetxController
         'villageName': selectedVillage.value?.name ?? '',
       };
 
-      // Prepare photo base64
-      String photoBase64 = '';
-      if (photo.value != null) {
-        photoBase64 = await _encodePhotoToBase64(photo.value!);
-      }
+      // Prepare head member data
+      Map<String, dynamic> headMemberData = {
+        'chfid': chfid,
+        'givenName': givenNameController.text,
+        'lastName': lastNameController.text,
+        'gender': gender.value,
+        'phone': phoneController.text,
+        'email': emailController.text,
+        'birthdate': birthdateController.text,
+        'maritalStatus': maritalStatus.value,
+        'disabilityStatus': disabilityStatus.value,
+        'identificationNo': identificationNoController.text,
+        'photo':
+            photo.value != null ? await _encodePhotoToBase64(photo.value!) : '',
+      };
 
       // Calculate contribution before saving
       final contribution = await calculateTotalContribution();
@@ -670,14 +705,14 @@ class EnrollmentController extends GetxController
         return familyId;
       } else {
         // Insert as family member to existing family
-        final existingFamilyId = familyId.value;
+        final existingFamilyId = this.familyId.value;
 
-        // Get existing family data
-        final existingFamilyData =
-            await dbHelper.getFamilyById(existingFamilyId);
-        final familyChfid = existingFamilyData?['chfid'] ?? '';
+        // Get existing family UUID
+        final familyData = await dbHelper.getFamilyById(existingFamilyId);
+        final familyUuid =
+            familyData?['uuid'] ?? DatabaseHelper.generateMemberUUID();
 
-        final memberDetails = {
+        final memberData = {
           'chfid': chfid,
           'firstName': givenNameController.text,
           'lastName': lastNameController.text,
@@ -689,15 +724,16 @@ class EnrollmentController extends GetxController
           'relationship': relationShip.value,
           'disabilityStatus': disabilityStatus.value,
           'identificationNo': identificationNoController.text,
+          'photo': photo.value != null
+              ? await _encodePhotoToBase64(photo.value!)
+              : '',
         };
-
         await dbHelper.insertFamilyMember(
-          familyChfid,
-          '${givenNameController.text} ${lastNameController.text}',
-          memberDetails,
-          photoBase64,
-          existingFamilyId,
-        );
+            familyUuid,
+            '${givenNameController.text} ${lastNameController.text}',
+            memberData,
+            photo.value != null ? photo.value!.path : '',
+            existingFamilyId);
 
         // Update family contribution after adding member
         await dbHelper.updateFamilyContribution(existingFamilyId, contribution);
@@ -1247,11 +1283,14 @@ class EnrollmentController extends GetxController
         membershipLevel.value.isNotEmpty &&
         areaType.value.isNotEmpty &&
         familyMembers.isNotEmpty) {
-      calculateTotalContribution();
+      // Calculate contribution asynchronously
+      calculateTotalContribution().then((value) {
+        // Update UI or handle the calculated value if needed
+        print('Calculated contribution: $value');
+      });
     }
   }
 
-  // Initialize configuration sync on controller start
   Future<void> _initializeConfigSync() async {
     try {
       // Check if we need to sync configuration
@@ -1277,7 +1316,8 @@ class EnrollmentController extends GetxController
       if (success) {
         SnackBars.success("Success", "Configuration updated successfully!");
         // Recalculate contribution with new config
-        await calculateTotalContribution();
+        final newContribution = await calculateTotalContribution();
+        print('Updated contribution: $newContribution');
       } else {
         SnackBars.failure(
             "Sync Failed", "Unable to update configuration. Using local data.");
@@ -1344,14 +1384,29 @@ class EnrollmentController extends GetxController
 
     try {
       if (isOnline.value) {
-        // Mock payment processing
-        await Future.delayed(const Duration(seconds: 2));
-
-        await dbHelper.updateFamilyPaymentStatus(
-          familyId,
-          status: 'PAID',
+        // Online payment processing
+        final paymentResult = await _arifpayService.initiatePayment(
+          amount: amount,
+          currency: 'ETB',
+          orderId: 'ORD_${DateTime.now().millisecondsSinceEpoch}',
+          description: 'CBHI Membership Payment',
         );
-        paymentStatus.value = 'PAID';
+
+        if (paymentResult.success) {
+          await dbHelper.updateFamilyPaymentStatus(
+            familyId,
+            status: 'PAID',
+            paymentMethod: paymentResult.method,
+            paymentReference: paymentResult.reference,
+          );
+          paymentStatus.value = 'PAID';
+        } else {
+          await dbHelper.updateFamilyPaymentStatus(
+            familyId,
+            status: 'FAILED',
+          );
+          paymentStatus.value = 'FAILED';
+        }
       } else {
         // Offline payment handling
         await dbHelper.updateFamilyPaymentStatus(
