@@ -65,6 +65,22 @@ jobs:
             echo "Error: key.properties not found in android directory"
             exit 1
           fi
+          echo "=== Contents of android/key.properties ==="
+          cat android/key.properties
+          echo "=== End of key.properties ==="
+          echo "=== Keystore file info ==="
+          ls -la android/app/keystore.jks
+
+      # 🧹 Clean key.properties
+      - name: Clean key.properties
+        run: |
+          # Remove any trailing whitespace and recreate the file
+          echo "storePassword=hubtech" > android/key.properties
+          echo "keyPassword=hubtech" >> android/key.properties
+          echo "keyAlias=hubtech" >> android/key.properties
+          echo "storeFile=keystore.jks" >> android/key.properties
+          echo "=== Cleaned key.properties ==="
+          cat android/key.properties | cat -A  # Show all characters including spaces
 
       # 🛠️ Build Signed APK
       - name: Build Signed APK

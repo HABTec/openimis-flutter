@@ -64,10 +64,10 @@ android {
 
     signingConfigs {
         release {
-            keyAlias keystoreProperties['keyAlias']?.trim()
-            keyPassword keystoreProperties['keyPassword']?.trim()
-            storeFile file(keystoreProperties['storeFile']?.trim())
-            storePassword keystoreProperties['storePassword']?.trim()
+            keyAlias keystoreProperties['keyAlias']?.toString()?.trim()
+            keyPassword keystoreProperties['keyPassword']?.toString()?.trim()
+            storeFile file("${keystoreProperties['storeFile']?.toString()?.trim()}")
+            storePassword keystoreProperties['storePassword']?.toString()?.trim()
         }
     }
 
