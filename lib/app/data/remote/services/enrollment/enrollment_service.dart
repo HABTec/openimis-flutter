@@ -57,5 +57,106 @@ class EnrollmentService implements IEnrollmentService<IDto> {
     }
   }
 
+  /// Create a family using GraphQL mutation
+  Future<Response> createFamily({required Map<String, dynamic> input}) async {
+    const String mutation = '''
+      mutation CreateFamily(
+        \$input: CreateFamilyInputType!
+      ) {
+        createFamily(input: \$input) {
+          clientMutationId
+          internalId
+        }
+      }
+    ''';
+    final data = {
+      'query': mutation,
+      'variables': {'input': input},
+    };
+    try {
+      return await dioClient.post('/api/graphql', data: data);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// List families using GraphQL query
+  Future<Response> listFamilies({required Map<String, dynamic> filters}) async {
+    const String query = '''
+      query ListFamilies(
+        \$filters: FamiliesFilterInputType
+      ) {
+        families(
+          ...\$filters
+        ) {
+          totalCount
+          pageInfo {
+            hasNextPage
+            hasPreviousPage
+            startCursor
+            endCursor
+          }
+          edges {
+            node {
+              id
+              uuid
+              poverty
+              confirmationNo
+              validityFrom
+              validityTo
+              headInsuree {
+                id
+                uuid
+                chfId
+                lastName
+                otherNames
+                email
+                phone
+                dob
+              }
+              location {
+                id
+                uuid
+                code
+                name
+                type
+                parent {
+                  id
+                  uuid
+                  code
+                  name
+                  type
+                  parent {
+                    id
+                    uuid
+                    code
+                    name
+                    type
+                    parent {
+                      id
+                      uuid
+                      code
+                      name
+                      type
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    ''';
+    final data = {
+      'query': query,
+      'variables': {'filters': filters},
+    };
+    try {
+      return await dioClient.post('/api/graphql', data: data);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
 
 }
