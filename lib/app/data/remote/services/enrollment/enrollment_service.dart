@@ -21,8 +21,8 @@ class EnrollmentService implements IEnrollmentService<IDto> {
   }
 
   @override
-  Future<Response> locations() async{
-     //LocationDto dto = LocationDto();
+  Future<Response> locations() async {
+    //LocationDto dto = LocationDto();
     try {
       return await dioClient.get(ApiRoutes.LOCATIONS);
     } catch (e) {
@@ -42,7 +42,7 @@ class EnrollmentService implements IEnrollmentService<IDto> {
   @override
   Future<Response> membership_card({required String uuid}) async {
     try {
-      return await dioClient.get(ApiRoutes.MEMBERSHIP_CARD+'/${uuid}');
+      return await dioClient.get(ApiRoutes.MEMBERSHIP_CARD + '/${uuid}');
     } catch (e) {
       rethrow;
     }
@@ -58,21 +58,22 @@ class EnrollmentService implements IEnrollmentService<IDto> {
   }
 
   /// Create a family using GraphQL mutation
+  @override
   Future<Response> createFamily({required Map<String, dynamic> input}) async {
     const String mutation = '''
-      mutation CreateFamily(
-        \$input: CreateFamilyInputType!
-      ) {
+      mutation CreateFamily(\$input: CreateFamilyInputType!) {
         createFamily(input: \$input) {
           clientMutationId
           internalId
         }
       }
     ''';
+
     final data = {
       'query': mutation,
       'variables': {'input': input},
     };
+
     try {
       return await dioClient.post('/api/graphql', data: data);
     } catch (e) {
@@ -81,13 +82,31 @@ class EnrollmentService implements IEnrollmentService<IDto> {
   }
 
   /// List families using GraphQL query
+  @override
   Future<Response> listFamilies({required Map<String, dynamic> filters}) async {
-    const String query = '''
-      query ListFamilies(
-        \$filters: FamiliesFilterInputType
-      ) {
+    // Build the query dynamically based on filters
+    String filterArgs = '';
+    if (filters.isNotEmpty) {
+      List<String> args = [];
+      filters.forEach((key, value) {
+        if (value != null) {
+          if (value is String) {
+            args.add('$key: "$value"');
+          } else if (value is List) {
+            String listArgs = value.map((item) => '"$item"').join(', ');
+            args.add('$key: [$listArgs]');
+          } else {
+            args.add('$key: $value');
+          }
+        }
+      });
+      filterArgs = args.join('\n    ');
+    }
+
+    final String query = '''
+      query {
         families(
-          ...\$filters
+          $filterArgs
         ) {
           totalCount
           pageInfo {
@@ -113,6 +132,7 @@ class EnrollmentService implements IEnrollmentService<IDto> {
                 email
                 phone
                 dob
+                genderId
               }
               location {
                 id
@@ -147,16 +167,16 @@ class EnrollmentService implements IEnrollmentService<IDto> {
         }
       }
     ''';
+
     final data = {
       'query': query,
-      'variables': {'filters': filters},
+      'variables': {},
     };
+
     try {
       return await dioClient.post('/api/graphql', data: data);
     } catch (e) {
       rethrow;
     }
   }
-
-
 }

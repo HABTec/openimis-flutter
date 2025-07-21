@@ -25,6 +25,8 @@ import '../modules/search/views/search_view.dart';
 import '../modules/waiting/bindings/waiting_binding.dart';
 import '../modules/waiting/views/waiting_view.dart';
 import '../modules/auth/views/register/widgets/otp_view.dart';
+import '../modules/settings/bindings/settings_binding.dart';
+import '../modules/settings/views/settings_view.dart';
 
 part 'app_routes.dart';
 
@@ -100,6 +102,11 @@ class AppPages {
       name: _Paths.PROFILE,
       page: () => ProfileView(),
       binding: CustomerProfileBinding(),
+    ),
+    GetPage(
+      name: _Paths.SETTINGS,
+      page: () => const SettingsView(),
+      binding: SettingsBinding(),
     ),
   ];
 }

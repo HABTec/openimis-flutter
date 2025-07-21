@@ -25,279 +25,284 @@ class OfflinePaymentView extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Row(
-            children: [
-              Icon(
-                Icons.payment,
-                color: AppTheme.primaryColor,
-                size: 28.w,
-              ),
-              SizedBox(width: 12.w),
-              Text(
-                'Offline Payment',
-                style: TextStyle(
-                  fontSize: 20.sp,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-            ],
-          ),
-
-          SizedBox(height: 16.h),
-
-          Text(
-            'Complete your payment using a PoS machine and enter the transaction details below.',
-            style: TextStyle(
-              fontSize: 14.sp,
-              color: Colors.grey[600],
-            ),
-          ),
-
-          SizedBox(height: 24.h),
-
-          // Payment amount display
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.all(16.w),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12.r),
-              border: Border.all(
-                color: AppTheme.primaryColor,
-                width: 1,
-              ),
-            ),
-            child: Column(
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
               children: [
+                Icon(
+                  Icons.payment,
+                  color: AppTheme.primaryColor,
+                  size: 28.w,
+                ),
+                SizedBox(width: 12.w),
                 Text(
-                  'Amount to Pay',
+                  'Offline Payment',
                   style: TextStyle(
-                    fontSize: 14.sp,
+                    fontSize: 20.sp,
+                    fontWeight: FontWeight.bold,
                     color: AppTheme.primaryColor,
-                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                SizedBox(height: 8.h),
-                Obx(() => Text(
-                      '${controller.paymentAmount.value.toStringAsFixed(2)} ETB',
-                      style: TextStyle(
-                        fontSize: 24.sp,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.primaryColor,
-                      ),
-                    )),
               ],
             ),
-          ),
 
-          SizedBox(height: 24.h),
+            SizedBox(height: 16.h),
 
-          // Transaction ID input method selection
-          Text(
-            'Transaction ID Entry',
-            style: TextStyle(
-              fontSize: 16.sp,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.primaryColor,
+            Text(
+              'Complete your payment using a PoS machine and enter the transaction details below.',
+              style: TextStyle(
+                fontSize: 14.sp,
+                color: Colors.grey[600],
+              ),
             ),
-          ),
 
-          SizedBox(height: 16.h),
+            SizedBox(height: 24.h),
 
-          // Option buttons
-          Row(
-            children: [
-              Expanded(
-                child: _buildOptionButton(
-                  'Manual Entry',
-                  Icons.keyboard,
-                  () => _showManualEntryDialog(context),
+            // Payment amount display
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(16.w),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12.r),
+                border: Border.all(
+                  color: AppTheme.primaryColor,
+                  width: 1,
                 ),
               ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _buildOptionButton(
-                  'Scan Receipt',
-                  Icons.camera_alt,
-                  () => controller.pickReceiptPhoto(),
-                ),
-              ),
-            ],
-          ),
-
-          SizedBox(height: 24.h),
-
-          // Transaction ID display
-          Obx(() => controller.transactionId.value.isNotEmpty
-              ? Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.all(16.w),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12.r),
-                    border: Border.all(
-                      color: Colors.green,
-                      width: 1,
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            controller.paymentMethod.value == 'offline_ocr'
-                                ? Icons.camera_alt
-                                : Icons.keyboard,
-                            color: Colors.green,
-                            size: 20.w,
-                          ),
-                          SizedBox(width: 8.w),
-                          Text(
-                            'Transaction ID',
-                            style: TextStyle(
-                              fontSize: 14.sp,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.green[700],
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: 8.h),
-                      Text(
-                        controller.transactionId.value,
-                        style: TextStyle(
-                          fontSize: 16.sp,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green[800],
-                        ),
-                      ),
-                      SizedBox(height: 8.h),
-                      Text(
-                        controller.paymentMethod.value == 'offline_ocr'
-                            ? 'Extracted from receipt'
-                            : 'Manually entered',
-                        style: TextStyle(
-                          fontSize: 12.sp,
-                          color: Colors.green[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : Container()),
-
-          // Receipt image display
-          Obx(() => controller.receiptPhoto.value != null
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(height: 16.h),
-                    Text(
-                      'Receipt Image',
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.primaryColor,
-                      ),
-                    ),
-                    SizedBox(height: 8.h),
-                    Container(
-                      width: double.infinity,
-                      height: 200.h,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12.r),
-                        border: Border.all(
-                          color: Colors.grey[300]!,
-                          width: 1,
-                        ),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12.r),
-                        child: Image.file(
-                          File(controller.receiptPhoto.value!.path),
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    ),
-                  ],
-                )
-              : Container()),
-
-          // OCR processing indicator
-          Obx(() => controller.isProcessingOCR.value
-              ? Column(
-                  children: [
-                    SizedBox(height: 16.h),
-                    Container(
-                      width: double.infinity,
-                      padding: EdgeInsets.all(16.w),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 20.w,
-                            height: 20.h,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.blue,
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: 12.w),
-                          Text(
-                            'Processing receipt...',
-                            style: TextStyle(
-                              fontSize: 14.sp,
-                              color: Colors.blue[700],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                )
-              : Container()),
-
-          SizedBox(height: 24.h),
-
-          // Save button
-          Obx(() => SizedBox(
-                width: double.infinity,
-                height: 50.h,
-                child: ElevatedButton(
-                  onPressed: controller.transactionId.value.isNotEmpty
-                      ? () async {
-                          await controller.saveOfflinePaymentData();
-                          Get.back();
-                        }
-                      : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12.r),
-                    ),
-                  ),
-                  child: Text(
-                    'Save Payment Information',
+              child: Column(
+                children: [
+                  Text(
+                    'Amount to Pay',
                     style: TextStyle(
-                      fontSize: 16.sp,
+                      fontSize: 14.sp,
+                      color: AppTheme.primaryColor,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  SizedBox(height: 8.h),
+                  Obx(() => Text(
+                        '${controller.paymentAmount.value.toStringAsFixed(2)} ETB',
+                        style: TextStyle(
+                          fontSize: 24.sp,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.primaryColor,
+                        ),
+                      )),
+                ],
+              ),
+            ),
+
+            SizedBox(height: 24.h),
+
+            // Transaction ID input method selection
+            Text(
+              'Transaction ID Entry',
+              style: TextStyle(
+                fontSize: 16.sp,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.primaryColor,
+              ),
+            ),
+
+            SizedBox(height: 16.h),
+
+            // Option buttons
+            Row(
+              children: [
+                Expanded(
+                  child: _buildOptionButton(
+                    'Manual Entry',
+                    Icons.keyboard,
+                    () => _showManualEntryDialog(context),
+                  ),
                 ),
-              )),
-        ],
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: _buildOptionButton(
+                    'Scan Receipt',
+                    Icons.camera_alt,
+                    () => controller.pickReceiptPhoto(),
+                  ),
+                ),
+              ],
+            ),
+
+            SizedBox(height: 24.h),
+
+            // Transaction ID display
+            Obx(() => controller.transactionId.value.isNotEmpty
+                ? Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(16.w),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12.r),
+                      border: Border.all(
+                        color: Colors.green,
+                        width: 1,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              controller.paymentMethod.value == 'offline_ocr'
+                                  ? Icons.camera_alt
+                                  : Icons.keyboard,
+                              color: Colors.green,
+                              size: 20.w,
+                            ),
+                            SizedBox(width: 8.w),
+                            Text(
+                              'Transaction ID',
+                              style: TextStyle(
+                                fontSize: 14.sp,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.green[700],
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 8.h),
+                        Text(
+                          controller.transactionId.value,
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green[800],
+                          ),
+                        ),
+                        SizedBox(height: 8.h),
+                        Text(
+                          controller.paymentMethod.value == 'offline_ocr'
+                              ? 'Extracted from receipt'
+                              : 'Manually entered',
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            color: Colors.green[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : Container()),
+
+            // Receipt image display
+            Obx(() => controller.receiptPhoto.value != null
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(height: 16.h),
+                      Text(
+                        'Receipt Image',
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                      SizedBox(height: 8.h),
+                      Container(
+                        width: double.infinity,
+                        height: 200.h,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12.r),
+                          border: Border.all(
+                            color: Colors.grey[300]!,
+                            width: 1,
+                          ),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12.r),
+                          child: Image.file(
+                            File(controller.receiptPhoto.value!.path),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : Container()),
+
+            // OCR processing indicator
+            Obx(() => controller.isProcessingOCR.value
+                ? Column(
+                    children: [
+                      SizedBox(height: 16.h),
+                      Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.all(16.w),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12.r),
+                        ),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 20.w,
+                              height: 20.h,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.blue,
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: 12.w),
+                            Text(
+                              'Processing receipt...',
+                              style: TextStyle(
+                                fontSize: 14.sp,
+                                color: Colors.blue[700],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  )
+                : Container()),
+
+            SizedBox(height: 24.h),
+            SizedBox(height: 24.h),
+            Text(controller.transactionId.value.isNotEmpty.toString()),
+            // Save button
+            Obx(() => SizedBox(
+                  width: double.infinity,
+                  height: 50.h,
+                  child: ElevatedButton(
+                    onPressed: controller.transactionId.value.isNotEmpty
+                        ? () async {
+                            // Close the bottom sheet first
+                            Get.back();
+                            // Then save payment data and navigate to invoice
+                            await controller.saveOfflinePaymentData();
+                          }
+                        : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12.r),
+                      ),
+                    ),
+                    child: Text(
+                      'Save Payment Information',
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                )),
+          ],
+        ),
       ),
     );
   }

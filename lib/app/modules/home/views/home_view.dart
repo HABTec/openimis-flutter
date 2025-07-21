@@ -4,7 +4,6 @@ import 'package:get/get.dart';
 import 'package:heroicons/heroicons.dart';
 import '../../../core/theme/app_theme.dart';
 import '../controllers/home_controller.dart';
-import '../../enrollment/views/enrollment_view.dart';
 
 class HomeView extends GetView<HomeController> {
   const HomeView({Key? key}) : super(key: key);
@@ -25,7 +24,9 @@ class HomeView extends GetView<HomeController> {
         backgroundColor: AppTheme.primaryColor,
         elevation: 0,
         centerTitle: true,
+        iconTheme: IconThemeData(color: Colors.white),
       ),
+      drawer: _buildDrawer(),
       body: SafeArea(
         child: Padding(
           padding: EdgeInsets.all(20.w),
@@ -174,6 +175,211 @@ class HomeView extends GetView<HomeController> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildDrawer() {
+    return Drawer(
+      child: Column(
+        children: [
+          // Drawer Header
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(20.w),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppTheme.primaryColor,
+                  AppTheme.primaryColor.withOpacity(0.8),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: SafeArea(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 30.r,
+                    backgroundColor: Colors.white,
+                    child: Icon(
+                      Icons.health_and_safety,
+                      size: 30.w,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
+                  SizedBox(height: 12.h),
+                  Text(
+                    'OpenIMIS',
+                    style: TextStyle(
+                      fontSize: 20.sp,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    'Community Health Insurance',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: Colors.white.withOpacity(0.9),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Menu Items
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                _buildDrawerItem(
+                  icon: HeroIcons.home,
+                  title: 'Dashboard',
+                  onTap: () {
+                    Get.back();
+                    Get.offNamed('/home');
+                  },
+                ),
+                _buildDrawerItem(
+                  icon: HeroIcons.userGroup,
+                  title: 'New Family Registration',
+                  onTap: () {
+                    Get.back();
+                    Get.toNamed('/enrollment');
+                  },
+                ),
+                _buildDrawerItem(
+                  icon: HeroIcons.folderOpen,
+                  title: 'Family Records',
+                  onTap: () {
+                    Get.back();
+                    Get.toNamed('/enrollment-list');
+                  },
+                ),
+                Divider(height: 1.h),
+                _buildDrawerItem(
+                  icon: HeroIcons.cog6Tooth,
+                  title: 'Settings',
+                  onTap: () {
+                    Get.back();
+                    Get.toNamed('/settings');
+                  },
+                ),
+                _buildDrawerItem(
+                  icon: HeroIcons.informationCircle,
+                  title: 'About',
+                  onTap: () {
+                    Get.back();
+                    _showAboutDialog();
+                  },
+                ),
+              ],
+            ),
+          ),
+
+          // Footer
+          Container(
+            padding: EdgeInsets.all(16.w),
+            child: Column(
+              children: [
+                Divider(height: 1.h),
+                SizedBox(height: 8.h),
+                Text(
+                  'Version 1.0.0',
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDrawerItem({
+    required HeroIcons icon,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      leading: HeroIcon(
+        icon,
+        color: AppTheme.primaryColor,
+        size: 24.w,
+        style: HeroIconStyle.outline,
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          fontSize: 16.sp,
+          fontWeight: FontWeight.w500,
+          color: Colors.grey[800],
+        ),
+      ),
+      onTap: onTap,
+      contentPadding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 4.h),
+    );
+  }
+
+  void _showAboutDialog() {
+    Get.dialog(
+      AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16.r),
+        ),
+        title: Text(
+          'About OpenIMIS',
+          style: TextStyle(
+            fontSize: 20.sp,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.primaryColor,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'OpenIMIS Enrollment App',
+              style: TextStyle(
+                fontSize: 16.sp,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              'Community Based Health Insurance enrollment and management system.',
+              style: TextStyle(fontSize: 14.sp),
+            ),
+            SizedBox(height: 16.h),
+            Text(
+              'Version: 1.0.0\nBuild: Development',
+              style: TextStyle(
+                fontSize: 12.sp,
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: Text(
+              'OK',
+              style: TextStyle(
+                color: AppTheme.primaryColor,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -16,6 +16,7 @@ abstract class Routes {
   static const PROFILE = _Paths.PROFILE;
   static const ENROLLMENT = _Paths.ENROLLMENT;
   static const ENROLLMENT_LIST = _Paths.ENROLLMENT_LIST;
+  static const SETTINGS = _Paths.SETTINGS;
 }
 
 abstract class _Paths {
@@ -37,4 +38,5 @@ abstract class _Paths {
   static const PARTNERS = '/partners';
   static const NOTICES = '/notices';
   static const PROFILE = '/profile';
+  static const SETTINGS = '/settings';
 }

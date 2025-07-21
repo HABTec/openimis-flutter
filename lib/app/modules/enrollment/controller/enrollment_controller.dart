@@ -28,6 +28,7 @@ import '../views/widgets/qr_view.dart';
 import '../views/widgets/payment_view.dart';
 import '../views/widgets/receipt_view.dart';
 import '../views/widgets/qr_card_view.dart';
+import '../views/widgets/offline_payment_invoice_view.dart';
 import 'EnrollmentDto.dart';
 import 'HospitalDto.dart';
 import '../../auth/controllers/auth_controller.dart';
@@ -235,6 +236,10 @@ class EnrollmentController extends GetxController
   void onInit() {
     super.onInit();
     tabController = TabController(length: 2, vsync: this);
+
+    // Auto-generate CHFID on initialization
+    _autoGenerateChfid();
+
     fetchEnrollments();
     fetchLocations();
     fetchHospitals();
@@ -250,6 +255,20 @@ class EnrollmentController extends GetxController
     ever(membershipLevel, (_) => _onMembershipDetailsChanged());
     ever(areaType, (_) => _onMembershipDetailsChanged());
     ever(familyMembers, (_) => _onMembershipDetailsChanged());
+  }
+
+  // Auto-generate CHFID
+  Future<void> _autoGenerateChfid() async {
+    try {
+      final dbHelper = DatabaseHelper();
+      final generatedChfid = await dbHelper.generateUniqueChfid();
+      chfidController.text = generatedChfid;
+    } catch (e) {
+      logger.e("Error generating CHFID", e);
+      // Fallback generation
+      final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+      chfidController.text = 'CHF${timestamp.substring(8)}';
+    }
   }
 
   Future<void> fetchEnrollmentDetails(int enrollmentId) async {
@@ -425,13 +444,35 @@ class EnrollmentController extends GetxController
     try {
       isLoading(true);
 
-      // First save the enrollment data
-      await onEnrollmentSubmitOffline();
+      // Check connectivity first
+      await _checkConnectivity();
 
-      // Then proceed to payment
-      await _initiatePayment();
+      if (isOnline.value) {
+        // 🚀 CREATE FAMILY USING GRAPHQL API
+        await createFamilyOnline();
+
+        // If family creation is successful, proceed to payment
+        await _initiatePayment();
+      } else {
+        // If offline, save locally and inform user
+        await onEnrollmentSubmitOffline();
+        SnackBars.warning(
+            "Offline Mode", "Family saved locally. Will sync when online.");
+        return; // Don't proceed to payment if offline
+      }
     } catch (e) {
+      logger.e("Error in online enrollment", e);
       SnackBars.failure("Error", "Failed to process enrollment: $e");
+
+      // Fallback: save locally if online submission fails
+      try {
+        await onEnrollmentSubmitOffline();
+        SnackBars.warning("Fallback",
+            "Saved locally due to connection issues. Will sync later.");
+      } catch (fallbackError) {
+        SnackBars.failure(
+            "Critical Error", "Failed to save enrollment data: $fallbackError");
+      }
     } finally {
       isLoading(false);
     }
@@ -845,67 +886,65 @@ class EnrollmentController extends GetxController
 
   /// Create family online using GraphQL
   Future<void> createFamilyOnline() async {
-    // Only head is added for now
-    final head = {
-      'chfId': chfidController.text,
-      'lastName': lastNameController.text,
-      'otherNames': givenNameController.text,
-      'genderId':
-          gender.value.isNotEmpty ? gender.value[0].toUpperCase() : null,
-      'dob': birthdateController.text,
-      'head': true,
-      'marital': maritalStatus.value.isNotEmpty
-          ? maritalStatus.value[0].toUpperCase()
-          : null,
-      'passport': identificationNoController.text,
-      'phone': phoneController.text,
-      'email': emailController.text,
-      'photo': photo.value != null
-          ? {
-              'officerId':
-                  6, // TODO: Replace with actual officerId if available
-              'date': DateTime.now().toIso8601String().split('T')[0],
-            }
-          : null,
-      'cardIssued': true,
-      'professionId': 3, // TODO: Replace with actual value if available
-      'educationId': 4, // TODO: Replace with actual value if available
-      'typeOfIdId': 'N',
-      'status': 'AC',
-      'healthFacilityId': 17, // TODO: Replace with actual value if available
-    };
+    final repo = getIt.get<EnrollmentRepository>();
 
-    final input = {
-      'clientMutationId': UniqueKey().toString(),
-      'clientMutationLabel':
-          'Create family - ${lastNameController.text} ${givenNameController.text} (${chfidController.text})',
-      'headInsuree': head,
-      'locationId': selectedVillage.value?.id ??
+    try {
+      logger.i("Starting GraphQL family creation...");
+
+      String? photoBase64;
+      if (photo.value != null) {
+        photoBase64 = await _encodePhotoToBase64(photo.value!);
+        logger.d("Photo encoded to base64");
+      }
+
+      // Prepare location ID
+      final locationId = selectedVillage.value?.id ??
           selectedMunicipality.value?.id ??
           selectedDistrict.value?.id ??
-          selectedRegion.value?.id,
-      'poverty': povertyStatus.value,
-      'familyTypeId': selectedFamilyType.value,
-      'address': addressDetail.text,
-      'confirmationTypeId': selectedConfirmationType.value,
-      'confirmationNo': confirmationNumber.text,
-      'jsonExt': '{}',
-    };
+          selectedRegion.value?.id;
 
-    isLoading.value = true;
-    final repo = getIt.get<EnrollmentRepository>();
-    try {
-      final result = await repo.createFamily(input: input);
+      logger.i(
+          "Calling GraphQL createFamily with CHFID: ${chfidController.text}");
+
+      final result = await repo.createFamilyFromForm(
+        chfId: chfidController.text,
+        lastName: lastNameController.text,
+        otherNames: givenNameController.text,
+        gender: gender.value,
+        dob: birthdateController.text,
+        phone: phoneController.text,
+        email: emailController.text,
+        identificationNo: identificationNoController.text,
+        maritalStatus: maritalStatus.value,
+        photoBase64: photoBase64,
+        locationId: locationId,
+        poverty: povertyStatus.value,
+        familyTypeId: selectedFamilyType.value.isNotEmpty
+            ? selectedFamilyType.value
+            : 'H',
+        address: addressDetail.text,
+        confirmationTypeId: selectedConfirmationType.value.isNotEmpty
+            ? selectedConfirmationType.value
+            : 'C',
+        confirmationNo: confirmationNumber.text,
+      );
+
       if (!result.error) {
-        SnackBars.success('Success', 'Family created successfully!');
-        // Optionally reset form or fetch families
+        logger.i("GraphQL family creation successful");
+        SnackBars.success('Success',
+            result.message ?? 'Family created successfully in backend!');
+
+        // Don't reset form here since we'll proceed to payment
+        // resetForm();
+        // fetchEnrollments();
       } else {
-        SnackBars.failure('Error', result.message ?? 'Failed to create family');
+        logger.e("GraphQL family creation failed: ${result.message}");
+        throw Exception(result.message ?? 'Failed to create family in backend');
       }
     } catch (e) {
-      SnackBars.failure('Error', e.toString());
-    } finally {
-      isLoading.value = false;
+      logger.e("Error in createFamilyOnline: $e");
+      // Re-throw the error so the calling method can handle it
+      throw Exception('Failed to create family online: $e');
     }
   }
 
@@ -940,9 +979,29 @@ class EnrollmentController extends GetxController
             selectedRegion.value?.id,
         'syncStatus': 0,
       };
-      await dbHelper.insertFamily(localFamily);
+      await dbHelper.insertCompleteFamilyWithHead(
+          localFamily, localFamily, photo.value?.path ?? '');
       SnackBars.success(
           'Offline', 'Family saved locally and will sync when online.');
+    }
+  }
+
+  /// Sync pending families when device comes online
+  Future<void> syncPendingFamilies() async {
+    try {
+      isLoading.value = true;
+      final repo = getIt.get<EnrollmentRepository>();
+      await repo.syncPendingFamilies();
+
+      // Refresh enrollments list after sync
+      await fetchEnrollments();
+
+      SnackBars.success(
+          'Sync', 'Pending families have been synced successfully.');
+    } catch (e) {
+      SnackBars.failure('Sync Error', 'Failed to sync pending families: $e');
+    } finally {
+      isLoading.value = false;
     }
   }
 
@@ -1347,22 +1406,26 @@ class EnrollmentController extends GetxController
   var isCalculatingContribution = false.obs;
 
   Future<double> calculateTotalContribution() async {
-    if (familyMembers.isEmpty ||
-        membershipType.value.isEmpty ||
-        membershipLevel.value.isEmpty ||
-        areaType.value.isEmpty) {
-      return 0.0;
-    }
-
     try {
       isCalculatingContribution(true);
 
+      // Calculate number of members (including head if no family members added yet)
+      int memberCount = familyMembers.isEmpty ? 1 : familyMembers.length;
+
+      // Use default values if fields are empty
+      String effectiveMembershipType =
+          membershipType.value.isEmpty ? 'Paying' : membershipType.value;
+      String effectiveMembershipLevel =
+          membershipLevel.value.isEmpty ? 'Level 1' : membershipLevel.value;
+      String effectiveAreaType =
+          areaType.value.isEmpty ? 'Rural' : areaType.value;
+
       final contribution =
           await _contributionConfigService.calculateContribution(
-        membershipLevel: membershipLevel.value,
-        membershipType: membershipType.value,
-        areaType: areaType.value,
-        numberOfMembers: familyMembers.length,
+        membershipLevel: effectiveMembershipLevel,
+        membershipType: effectiveMembershipType,
+        areaType: effectiveAreaType,
+        numberOfMembers: memberCount,
       );
 
       calculatedContribution.value = contribution;
@@ -1378,21 +1441,30 @@ class EnrollmentController extends GetxController
 
   // Default fallback calculation
   double _getDefaultContribution() {
-    if (familyMembers.isEmpty) return 0.0;
+    // Calculate number of members (minimum 1 for head)
+    int memberCount = familyMembers.isEmpty ? 1 : familyMembers.length;
 
-    double baseRate = 0.0;
-    switch (membershipLevel.value) {
+    // Use default values if fields are empty
+    String effectiveMembershipType =
+        membershipType.value.isEmpty ? 'Paying' : membershipType.value;
+    String effectiveMembershipLevel =
+        membershipLevel.value.isEmpty ? 'Level 1' : membershipLevel.value;
+
+    double baseRate = 150.0; // Default base rate
+    switch (effectiveMembershipLevel) {
       case 'Level 1':
-        baseRate = membershipType.value == 'Paying' ? 100.0 : 50.0;
+        baseRate = effectiveMembershipType == 'Paying' ? 100.0 : 50.0;
         break;
       case 'Level 2':
-        baseRate = membershipType.value == 'Paying' ? 150.0 : 75.0;
+        baseRate = effectiveMembershipType == 'Paying' ? 150.0 : 75.0;
         break;
       case 'Level 3':
-        baseRate = membershipType.value == 'Paying' ? 200.0 : 100.0;
+        baseRate = effectiveMembershipType == 'Paying' ? 200.0 : 100.0;
         break;
+      default:
+        baseRate = 150.0; // Default fallback
     }
-    return baseRate * familyMembers.length;
+    return baseRate * memberCount;
   }
 
   // Recalculate contribution when relevant fields change
@@ -1696,9 +1768,10 @@ class EnrollmentController extends GetxController
   Future<void> saveOfflinePaymentData() async {
     try {
       final dbHelper = DatabaseHelper();
+      print("Before saving: " + transactionId.value);
 
       // Store payment data locally
-      await dbHelper.insertOfflinePayment({
+      final paymentData = {
         'family_id': familyId.value,
         'transaction_id': transactionId.value,
         'payment_method': paymentMethod.value,
@@ -1706,13 +1779,20 @@ class EnrollmentController extends GetxController
         'receipt_image_path': receiptPhoto.value?.path,
         'amount': paymentAmount.value,
         'sync_status': 'PENDING',
-      });
+      };
+
+      await dbHelper.insertOfflinePayment(paymentData);
+      print("After saving: " + transactionId.value);
+
+      // Navigate to invoice view
+      Get.to(() => OfflinePaymentInvoiceView(paymentData: paymentData));
 
       showSnackBar(
         'Success',
         'Payment data saved for offline sync',
       );
     } catch (e) {
+      print(e);
       showSnackBar(
         'Error',
         'Failed to save payment data: $e',
@@ -1727,6 +1807,49 @@ class EnrollmentController extends GetxController
     if (id.length < 8) return false;
     // Add more validation rules as needed
     return true;
+  }
+
+  /// Test GraphQL family creation (for debugging)
+  Future<void> testGraphQLConnection() async {
+    try {
+      logger.i("Testing GraphQL connection...");
+      isLoading.value = true;
+
+      final repo = getIt.get<EnrollmentRepository>();
+
+      // Test with minimal data
+      final testResult = await repo.createFamilyFromForm(
+        chfId: 'TEST${DateTime.now().millisecondsSinceEpoch}',
+        lastName: 'TestLastName',
+        otherNames: 'TestFirstName',
+        gender: 'M',
+        dob: '1990-01-01',
+        phone: '+1234567890',
+        email: 'test@example.com',
+        identificationNo: 'TEST123',
+        maritalStatus: 'S',
+        photoBase64: null,
+        locationId: selectedRegion.value?.id ?? 1,
+        poverty: false,
+        familyTypeId: 'H',
+        address: 'Test Address',
+        confirmationTypeId: 'C',
+        confirmationNo: 'TEST123456',
+      );
+
+      if (!testResult.error) {
+        logger.i("GraphQL test successful!");
+        SnackBars.success('Test Success', 'GraphQL connection is working!');
+      } else {
+        logger.e("GraphQL test failed: ${testResult.message}");
+        SnackBars.failure('Test Failed', testResult.message ?? 'Unknown error');
+      }
+    } catch (e) {
+      logger.e("GraphQL test error: $e");
+      SnackBars.failure('Test Error', 'Failed to test GraphQL: $e');
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   @override
