@@ -133,6 +133,8 @@ class PaymentInitiationResponse {
   final String checkoutUrl;
   final String orderId;
   final double amount;
+  final String paymentMethod;
+  final String transactionId;
   final String currency;
   final String sessionId;
   final String expiresAt;
@@ -145,18 +147,21 @@ class PaymentInitiationResponse {
     required this.currency,
     required this.sessionId,
     required this.expiresAt,
+    required this.transactionId,
+    required this.paymentMethod,
   });
 
   factory PaymentInitiationResponse.fromJson(Map<String, dynamic> json) {
     return PaymentInitiationResponse(
-      success: json['success'],
-      checkoutUrl: json['checkout_url'],
-      orderId: json['order_id'],
-      amount: json['amount'].toDouble(),
-      currency: json['currency'],
-      sessionId: json['session_id'],
-      expiresAt: json['expires_at'],
-    );
+        success: json['success'],
+        checkoutUrl: json['checkout_url'],
+        orderId: json['order_id'],
+        amount: json['amount'].toDouble(),
+        currency: json['currency'],
+        sessionId: json['session_id'],
+        expiresAt: json['expires_at'],
+        paymentMethod: json['paymentMethod'],
+        transactionId: json['transactionId']);
   }
 }
 

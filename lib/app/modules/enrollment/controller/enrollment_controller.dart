@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
@@ -13,9 +12,13 @@ import 'package:openimis_app/app/modules/enrollment/controller/LocationDto.dart'
 import 'package:openimis_app/app/modules/enrollment/controller/MembershipDto.dart';
 import 'package:openimis_app/app/data/remote/services/payment/arifpay_service.dart';
 import 'package:openimis_app/app/data/local/services/contribution_config_service.dart';
-import 'package:uuid/uuid.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'dart:async';
+import 'package:path/path.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:logger/logger.dart';
 
 import '../../../data/remote/base/status.dart';
 import '../../../di/locator.dart';
@@ -27,6 +30,7 @@ import '../views/widgets/receipt_view.dart';
 import '../views/widgets/qr_card_view.dart';
 import 'EnrollmentDto.dart';
 import 'HospitalDto.dart';
+import '../../auth/controllers/auth_controller.dart';
 
 // Family Member Model
 class FamilyMember {
@@ -103,7 +107,6 @@ class EnrollmentController extends GetxController
     with GetSingleTickerProviderStateMixin {
   final GlobalKey<FormState> enrollmentFormKey = GlobalKey<FormState>();
 
-  final _enrollmentRepository = getIt.get<EnrollmentRepository>();
   final _arifpayService = ArifPayService();
   final _contributionConfigService = ContributionConfigService();
 
@@ -226,6 +229,8 @@ class EnrollmentController extends GetxController
   var villages = <Village>[].obs;
   late TabController tabController;
 
+  final logger = Logger();
+
   @override
   void onInit() {
     super.onInit();
@@ -300,9 +305,9 @@ class EnrollmentController extends GetxController
   }
 
   Future<void> fetchLocations() async {
-    _rxLocationState.value = Status.loading();
+    _rxLocationState.value = const Status.loading();
     try {
-      await Future.delayed(Duration(seconds: 1));
+      await Future.delayed(const Duration(seconds: 1));
       // Mock location data - you can replace with actual API call
       final mockLocations = [
         LocationDto(
@@ -345,9 +350,9 @@ class EnrollmentController extends GetxController
   }
 
   Future<void> fetchHospitals() async {
-    _rxHospitalState.value = Status.loading();
+    _rxHospitalState.value = const Status.loading();
     try {
-      await Future.delayed(Duration(seconds: 1));
+      await Future.delayed(const Duration(seconds: 1));
       // Mock hospital data
       final mockHospitals = [
         HealthServiceProvider(
@@ -362,7 +367,6 @@ class EnrollmentController extends GetxController
   }
 
   Future<void> updateEnrollment(enrollment) async {
-    final dbHelper = DatabaseHelper();
     // Implementation for updating enrollment
     // TODO: Add update logic with disability status
   }
@@ -371,7 +375,6 @@ class EnrollmentController extends GetxController
   Future<void> onEnrollmentSubmitOffline() async {
     if (!_validateForm()) return;
 
-    final db = await DatabaseHelper().database;
     String? photoBase64;
     if (photo.value != null) {
       photoBase64 = await _encodePhotoToBase64(photo.value!);
@@ -440,7 +443,7 @@ class EnrollmentController extends GetxController
       // Show processing dialog
       Get.dialog(
         AlertDialog(
-          title: Row(
+          title: const Row(
             children: [
               CircularProgressIndicator(
                 strokeWidth: 2,
@@ -460,14 +463,14 @@ class EnrollmentController extends GetxController
                   if (snapshot.hasData) {
                     return Text('Amount: ${snapshot.data} ETB');
                   } else {
-                    return Text('Amount: Calculating... ETB');
+                    return const Text('Amount: Calculating... ETB');
                   }
                 },
               ),
-              Text('Currency: ETB'),
-              Text('Description: CBHI Membership Payment'),
-              SizedBox(height: 16),
-              Text('Initiating ArifPay payment gateway...'),
+              const Text('Currency: ETB'),
+              const Text('Description: CBHI Membership Payment'),
+              const SizedBox(height: 16),
+              const Text('Initiating ArifPay payment gateway...'),
             ],
           ),
         ),
@@ -475,9 +478,8 @@ class EnrollmentController extends GetxController
       );
 
       // Simulate payment processing
-      await Future.delayed(Duration(seconds: 2));
+      await Future.delayed(const Duration(seconds: 2));
 
-      final contributionAmount = await calculateTotalContribution();
       final response = await _arifpayService.initiatePayment(
         amount: await calculateTotalContribution(),
         currency: 'ETB',
@@ -540,7 +542,7 @@ class EnrollmentController extends GetxController
   void _showQRCard() {
     // Show loading dialog while generating QR card
     Get.dialog(
-      AlertDialog(
+      const AlertDialog(
         title: Row(
           children: [
             CircularProgressIndicator(
@@ -557,7 +559,7 @@ class EnrollmentController extends GetxController
     );
 
     // Simulate QR generation delay
-    Future.delayed(Duration(seconds: 2), () {
+    Future.delayed(const Duration(seconds: 2), () {
       Get.back(); // Close loading dialog
 
       // Navigate to QR card view
@@ -577,7 +579,7 @@ class EnrollmentController extends GetxController
 
       for (int id in enrollmentIds) {
         // Mock sync - simulate API call
-        await Future.delayed(Duration(seconds: 1));
+        await Future.delayed(const Duration(seconds: 1));
 
         // Update sync status in database
         // TODO: Implement actual sync logic
@@ -616,6 +618,9 @@ class EnrollmentController extends GetxController
         chfidController.text = chfid; // Update the UI
         SnackBars.success("Auto-Generated", "CBHI ID generated: $chfid");
       }
+
+      // Calculate contribution before preparing family data
+      final contribution = await calculateTotalContribution();
 
       // Prepare family data with all form fields
       Map<String, dynamic> familyData = {
@@ -657,8 +662,8 @@ class EnrollmentController extends GetxController
             photo.value != null ? await _encodePhotoToBase64(photo.value!) : '',
       };
 
-      // Calculate contribution before saving
-      final contribution = await calculateTotalContribution();
+      // Get photo base64 from head member data
+      final photoBase64 = headMemberData['photo'];
 
       if (newEnrollment.value && isHead.value) {
         // Insert new family with head member using existing method
@@ -705,7 +710,7 @@ class EnrollmentController extends GetxController
         return familyId;
       } else {
         // Insert as family member to existing family
-        final existingFamilyId = this.familyId.value;
+        final existingFamilyId = familyId.value;
 
         // Get existing family UUID
         final familyData = await dbHelper.getFamilyById(existingFamilyId);
@@ -740,7 +745,7 @@ class EnrollmentController extends GetxController
         return existingFamilyId;
       }
     } catch (e) {
-      print('Error saving to local database: $e');
+      logger.e("Error saving to local database", e);
       SnackBars.failure("Save Error", "Failed to save enrollment data: $e");
       rethrow;
     }
@@ -771,16 +776,17 @@ class EnrollmentController extends GetxController
 
       // Remove from local database
       final db = await DatabaseHelper().database;
-      await db.delete('families', where: 'id = ?', whereArgs: [enrollmentId]);
+      await db.delete('family', where: 'id = ?', whereArgs: [enrollmentId]);
       await db
           .delete('members', where: 'family_id = ?', whereArgs: [enrollmentId]);
 
       // Refresh the enrollments list
       fetchEnrollments();
 
-      SnackBars.success("Success", "Enrollment deleted successfully!");
+      showSnackBar("Success", "Enrollment deleted successfully!");
     } catch (e) {
-      SnackBars.failure("Error", "Failed to delete enrollment: $e");
+      logger.e("Failed to delete enrollment", e);
+      showSnackBar("Error", "Failed to delete enrollment: $e", isError: true);
     } finally {
       isLoading(false);
     }
@@ -813,9 +819,11 @@ class EnrollmentController extends GetxController
       // Proceed to payment
       await _initiatePayment();
 
-      SnackBars.success("Success", "Online enrollment initiated!");
+      showSnackBar("Success", "Online enrollment initiated!");
     } catch (e) {
-      SnackBars.failure("Error", "Failed to process online enrollment: $e");
+      logger.e("Failed to process online enrollment", e);
+      showSnackBar("Error", "Failed to process online enrollment: $e",
+          isError: true);
     } finally {
       isLoading(false);
     }
@@ -823,12 +831,12 @@ class EnrollmentController extends GetxController
 
   Future<void> _processOnlineEnrollment(int familyId) async {
     // Mock online enrollment processing
-    await Future.delayed(Duration(seconds: 2));
+    await Future.delayed(const Duration(seconds: 2));
 
     // Update sync status to indicate online processing
     final db = await DatabaseHelper().database;
     await db.update(
-      'families',
+      'family',
       {'sync': 1},
       where: 'id = ?',
       whereArgs: [familyId],
@@ -1058,7 +1066,19 @@ class EnrollmentController extends GetxController
   void showSnackBarOnFailure(String? err) {
     Get.closeAllSnackbars();
     SnackBars.failure("Oops!", err.toString());
-    _rxEnrollmentState.value = Status.idle();
+    _rxEnrollmentState.value = const Status.idle();
+  }
+
+  void showSnackBar(String title, String message, {bool isError = false}) {
+    Get.snackbar(
+      title,
+      message,
+      backgroundColor:
+          isError ? const Color(0xFFFF5252) : const Color(0xFF4CAF50),
+      colorText: Colors.white,
+      duration: const Duration(seconds: 3),
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
 
   // Family Member Management Methods
@@ -1115,7 +1135,7 @@ class EnrollmentController extends GetxController
     Get.snackbar(
       'Success',
       'Family member added successfully',
-      backgroundColor: Color(0xFF036273),
+      backgroundColor: const Color(0xFF036273),
       colorText: Colors.white,
     );
   }
@@ -1138,7 +1158,7 @@ class EnrollmentController extends GetxController
           Get.snackbar(
             'Success',
             'Family member removed successfully',
-            backgroundColor: Color(0xFF036273),
+            backgroundColor: const Color(0xFF036273),
             colorText: Colors.white,
           );
         },
@@ -1160,7 +1180,7 @@ class EnrollmentController extends GetxController
       Get.snackbar(
         'Success',
         '${familyMembers[index].fullName} is now the family head',
-        backgroundColor: Color(0xFF036273),
+        backgroundColor: const Color(0xFF036273),
         colorText: Colors.white,
       );
     }
@@ -1191,11 +1211,6 @@ class EnrollmentController extends GetxController
       // Remove member from list (will be re-added when form is submitted)
       familyMembers.removeAt(index);
     }
-  }
-
-  String _generateChfid() {
-    // Generate a simple CHFID (in real app, this would be more sophisticated)
-    return 'CHF${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
   }
 
   void _clearFormForNextMember() {
@@ -1250,7 +1265,7 @@ class EnrollmentController extends GetxController
       calculatedContribution.value = contribution;
       return contribution;
     } catch (e) {
-      print('Error calculating contribution: $e');
+      logger.e("Error calculating contribution", e);
       // Fallback to default calculation
       return _getDefaultContribution();
     } finally {
@@ -1286,7 +1301,7 @@ class EnrollmentController extends GetxController
       // Calculate contribution asynchronously
       calculateTotalContribution().then((value) {
         // Update UI or handle the calculated value if needed
-        print('Calculated contribution: $value');
+        logger.i('Calculated contribution: $value');
       });
     }
   }
@@ -1298,13 +1313,13 @@ class EnrollmentController extends GetxController
         final syncSuccess =
             await _contributionConfigService.syncConfigFromBackend();
         if (syncSuccess) {
-          print('Configuration synced successfully');
+          logger.i('Configuration synced successfully');
         } else {
-          print('Configuration sync failed - using local data');
+          logger.w('Configuration sync failed - using local data');
         }
       }
     } catch (e) {
-      print('Error initializing config sync: $e');
+      logger.e('Error initializing config sync', e);
     }
   }
 
@@ -1314,16 +1329,18 @@ class EnrollmentController extends GetxController
       isLoading(true);
       final success = await _contributionConfigService.syncConfigFromBackend();
       if (success) {
-        SnackBars.success("Success", "Configuration updated successfully!");
+        showSnackBar("Success", "Configuration updated successfully!");
         // Recalculate contribution with new config
         final newContribution = await calculateTotalContribution();
-        print('Updated contribution: $newContribution');
+        logger.i('Updated contribution: $newContribution');
       } else {
-        SnackBars.failure(
-            "Sync Failed", "Unable to update configuration. Using local data.");
+        showSnackBar(
+            "Sync Failed", "Unable to update configuration. Using local data.",
+            isError: true);
       }
     } catch (e) {
-      SnackBars.failure("Error", "Failed to sync configuration: $e");
+      logger.e("Failed to sync configuration", e);
+      showSnackBar("Error", "Failed to sync configuration: $e", isError: true);
     } finally {
       isLoading(false);
     }
@@ -1374,7 +1391,7 @@ class EnrollmentController extends GetxController
         }
       }
     } catch (e) {
-      print('Error during sync: $e');
+      logger.e('Error during sync', e);
     }
   }
 
@@ -1396,8 +1413,9 @@ class EnrollmentController extends GetxController
           await dbHelper.updateFamilyPaymentStatus(
             familyId,
             status: 'PAID',
-            paymentMethod: paymentResult.method,
-            paymentReference: paymentResult.reference,
+            paymentMethod: paymentResult.paymentMethod, // Updated property name
+            paymentReference:
+                paymentResult.transactionId, // Updated property name
           );
           paymentStatus.value = 'PAID';
         } else {
@@ -1414,12 +1432,8 @@ class EnrollmentController extends GetxController
           status: 'PENDING',
         );
         paymentStatus.value = 'PENDING';
-        Get.snackbar(
-          'Offline Mode',
-          'Payment will be processed when connection is restored',
-          backgroundColor: Colors.orange,
-          colorText: Colors.white,
-        );
+        showSnackBar('Offline Mode',
+            'Payment will be processed when connection is restored');
       }
     } catch (e) {
       await dbHelper.updateFamilyPaymentStatus(
@@ -1427,12 +1441,8 @@ class EnrollmentController extends GetxController
         status: 'FAILED',
       );
       paymentStatus.value = 'FAILED';
-      Get.snackbar(
-        'Payment Error',
-        'Failed to process payment: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      showSnackBar('Payment Error', 'Failed to process payment: $e',
+          isError: true);
     }
   }
 
@@ -1465,7 +1475,7 @@ class EnrollmentController extends GetxController
         await cameraController!.initialize();
       }
     } catch (e) {
-      print('Error initializing cameras: $e');
+      logger.e("Error initializing cameras", e);
     }
   }
 
@@ -1482,11 +1492,10 @@ class EnrollmentController extends GetxController
         await extractTextFromReceipt(photo);
       }
     } catch (e) {
-      Get.snackbar(
+      showSnackBar(
         'Error',
         'Failed to capture receipt: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
+        isError: true,
       );
     }
   }
@@ -1505,7 +1514,7 @@ class EnrollmentController extends GetxController
       String fullText = '';
       for (TextBlock block in recognizedText.blocks) {
         for (TextLine line in block.lines) {
-          fullText += line.text + '\n';
+          fullText += '${line.text}\n';
         }
       }
 
@@ -1519,26 +1528,21 @@ class EnrollmentController extends GetxController
         transactionId.value = extractedId;
         paymentMethod.value = 'offline_ocr';
 
-        Get.snackbar(
+        showSnackBar(
           'Success',
           'Transaction ID extracted: $extractedId',
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
         );
       } else {
-        Get.snackbar(
+        showSnackBar(
           'OCR Complete',
           'Please manually enter the transaction ID',
-          backgroundColor: Colors.orange,
-          colorText: Colors.white,
         );
       }
     } catch (e) {
-      Get.snackbar(
+      showSnackBar(
         'OCR Error',
         'Failed to extract text: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
+        isError: true,
       );
     } finally {
       isProcessingOCR.value = false;
@@ -1601,18 +1605,15 @@ class EnrollmentController extends GetxController
         'sync_status': 'PENDING',
       });
 
-      Get.snackbar(
+      showSnackBar(
         'Success',
         'Payment data saved for offline sync',
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
       );
     } catch (e) {
-      Get.snackbar(
+      showSnackBar(
         'Error',
         'Failed to save payment data: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
+        isError: true,
       );
     }
   }
