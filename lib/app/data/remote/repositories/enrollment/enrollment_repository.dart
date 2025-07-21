@@ -145,6 +145,38 @@ class EnrollmentRepository implements IEnrollmentRepository<EnrollmentInDto> {
     }
   }
 
+  /// Create a family using GraphQL
+  Future<ApiResponse> createFamily({required Map<String, dynamic> input}) async {
+    try {
+      final response = await service.createFamily(input: input);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return ApiResponse.success(true, message: "Family created successfully.");
+      }
+      return ApiResponse.failure(response.data['message'] ?? 'Unknown error');
+    } on DioError catch (e) {
+      if (e.response != null && e.response!.data != null) {
+        return ApiResponse.failure(e.response!.data['message']);
+      }
+      return ApiResponse.failure(e.message);
+    }
+  }
+
+  /// List families using GraphQL
+  Future<ApiResponse> listFamilies({required Map<String, dynamic> filters}) async {
+    try {
+      final response = await service.listFamilies(filters: filters);
+      if (response.statusCode == 200) {
+        return ApiResponse.success(response.data['data']['families']);
+      }
+      return ApiResponse.failure(response.data['message'] ?? 'Unknown error');
+    } on DioError catch (e) {
+      if (e.response != null && e.response!.data != null) {
+        return ApiResponse.failure(e.response!.data['message']);
+      }
+      return ApiResponse.failure(e.message);
+    }
+  }
+
   // Sync family data with server
   Future<ApiResponse> syncFamilyData(Map<String, dynamic> data) async {
     try {

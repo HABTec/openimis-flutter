@@ -843,6 +843,109 @@ class EnrollmentController extends GetxController
     );
   }
 
+  /// Create family online using GraphQL
+  Future<void> createFamilyOnline() async {
+    // Only head is added for now
+    final head = {
+      'chfId': chfidController.text,
+      'lastName': lastNameController.text,
+      'otherNames': givenNameController.text,
+      'genderId':
+          gender.value.isNotEmpty ? gender.value[0].toUpperCase() : null,
+      'dob': birthdateController.text,
+      'head': true,
+      'marital': maritalStatus.value.isNotEmpty
+          ? maritalStatus.value[0].toUpperCase()
+          : null,
+      'passport': identificationNoController.text,
+      'phone': phoneController.text,
+      'email': emailController.text,
+      'photo': photo.value != null
+          ? {
+              'officerId':
+                  6, // TODO: Replace with actual officerId if available
+              'date': DateTime.now().toIso8601String().split('T')[0],
+            }
+          : null,
+      'cardIssued': true,
+      'professionId': 3, // TODO: Replace with actual value if available
+      'educationId': 4, // TODO: Replace with actual value if available
+      'typeOfIdId': 'N',
+      'status': 'AC',
+      'healthFacilityId': 17, // TODO: Replace with actual value if available
+    };
+
+    final input = {
+      'clientMutationId': UniqueKey().toString(),
+      'clientMutationLabel':
+          'Create family - ${lastNameController.text} ${givenNameController.text} (${chfidController.text})',
+      'headInsuree': head,
+      'locationId': selectedVillage.value?.id ??
+          selectedMunicipality.value?.id ??
+          selectedDistrict.value?.id ??
+          selectedRegion.value?.id,
+      'poverty': povertyStatus.value,
+      'familyTypeId': selectedFamilyType.value,
+      'address': addressDetail.text,
+      'confirmationTypeId': selectedConfirmationType.value,
+      'confirmationNo': confirmationNumber.text,
+      'jsonExt': '{}',
+    };
+
+    isLoading.value = true;
+    final repo = getIt.get<EnrollmentRepository>();
+    try {
+      final result = await repo.createFamily(input: input);
+      if (!result.error) {
+        SnackBars.success('Success', 'Family created successfully!');
+        // Optionally reset form or fetch families
+      } else {
+        SnackBars.failure('Error', result.message ?? 'Failed to create family');
+      }
+    } catch (e) {
+      SnackBars.failure('Error', e.toString());
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  /// Store family locally if offline, and sync when online
+  Future<void> createFamilyWithOfflineSupport() async {
+    await _checkConnectivity();
+    if (isOnline.value) {
+      await createFamilyOnline();
+    } else {
+      // Store locally for later sync
+      final dbHelper = DatabaseHelper();
+      final localFamily = {
+        'chfid': chfidController.text,
+        'lastName': lastNameController.text,
+        'givenName': givenNameController.text,
+        'gender': gender.value,
+        'birthdate': birthdateController.text,
+        'phone': phoneController.text,
+        'email': emailController.text,
+        'identificationNo': identificationNoController.text,
+        'maritalStatus': maritalStatus.value,
+        'isHead': true,
+        'photoPath': photo.value?.path,
+        'familyType': selectedFamilyType.value,
+        'confirmationType': selectedConfirmationType.value,
+        'confirmationNumber': confirmationNumber.text,
+        'addressDetail': addressDetail.text,
+        'povertyStatus': povertyStatus.value,
+        'locationId': selectedVillage.value?.id ??
+            selectedMunicipality.value?.id ??
+            selectedDistrict.value?.id ??
+            selectedRegion.value?.id,
+        'syncStatus': 0,
+      };
+      await dbHelper.insertFamily(localFamily);
+      SnackBars.success(
+          'Offline', 'Family saved locally and will sync when online.');
+    }
+  }
+
   // Step navigation for new form
   var currentStep = 1.obs;
   var stepRegions = <LocationDto>[].obs;

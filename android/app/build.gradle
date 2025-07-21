@@ -34,6 +34,7 @@ apply plugin: 'com.google.gms.google-services'
 
 
 android {
+    namespace "np.com.tinker.vacancy"
     compileSdkVersion flutter.compileSdkVersion
     ndkVersion "25.1.8937393"//flutter.ndkVersion
 
@@ -55,24 +56,26 @@ android {
         applicationId "np.com.tinker.vacancy"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-build-configuration.
-        minSdkVersion  21//flutter.minSdkVersion
-        targetSdkVersion  34//flutter.targetSdkVersion
+        minSdkVersion 21
+        targetSdkVersion flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
     }
 
     signingConfigs {
         release {
-            keyAlias keystoreProperties['keyAlias']
-            keyPassword keystoreProperties['keyPassword']
-            storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
-            storePassword keystoreProperties['storePassword']
+            keyAlias keystoreProperties['keyAlias']?.toString()?.trim()
+            keyPassword keystoreProperties['keyPassword']?.toString()?.trim()
+            storeFile file("${keystoreProperties['storeFile']?.toString()?.trim()}")
+            storePassword keystoreProperties['storePassword']?.toString()?.trim()
         }
     }
 
     buildTypes {
         release {
             signingConfig signingConfigs.release
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 }
@@ -82,5 +85,5 @@ flutter {
 }
 
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
 }
