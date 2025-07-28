@@ -4,6 +4,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:heroicons/heroicons.dart';
 import 'package:openimis_app/app/modules/settings/views/settings_view.dart';
+import 'package:openimis_app/app/routes/app_pages.dart';
 
 import '../../../../language/view/language_choose_bottomsheet.dart';
 import '../../controllers/auth_controller.dart';
@@ -36,7 +37,7 @@ class LoginView extends GetView<AuthController> {
           automaticallyImplyLeading: false,
           actions: [
             IconButton(
-              onPressed: () => Get.to(() => SettingsView()),
+              onPressed: () => Get.toNamed(Routes.SETTINGS),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
               style: IconButton.styleFrom(

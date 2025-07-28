@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:heroicons/heroicons.dart';
 import 'package:openimis_app/app/modules/enrollment/controller/LocationDto.dart';
 import '../../controller/enrollment_controller.dart';
+import '../../controller/enhanced_enrollment_controller.dart';
 import 'offline_payment_view.dart';
 
 class EnrollmentForm extends StatelessWidget {
@@ -45,6 +46,14 @@ class EnrollmentForm extends StatelessWidget {
                       )
                     : Icon(Icons.sync, color: Colors.white),
                 tooltip: 'Sync Rates',
+              )),
+          // Test GraphQL button for debugging
+          Obx(() => IconButton(
+                onPressed: controller.isLoading.value
+                    ? null
+                    : () => controller.testGraphQLConnection(),
+                icon: Icon(Icons.bug_report, color: Colors.white),
+                tooltip: 'Test GraphQL',
               )),
           SizedBox(width: 8),
         ],
@@ -1294,14 +1303,10 @@ class EnrollmentForm extends StatelessWidget {
                           children: [
                             ElevatedButton(
                               onPressed: () {
-                                // Show offline payment dialog
-                                Get.bottomSheet(
-                                  Container(
-                                    height: Get.height * 0.8,
-                                    child: OfflinePaymentView(),
-                                  ),
-                                  isScrollControlled: true,
-                                );
+                                // Use the enhanced controller's dialog method
+                                final enhancedController =
+                                    Get.find<EnhancedEnrollmentController>();
+                                enhancedController.showTransactionIdDialog();
                               },
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,

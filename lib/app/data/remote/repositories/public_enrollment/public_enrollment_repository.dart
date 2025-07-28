@@ -15,7 +15,8 @@ import '../../exceptions/dio_exceptions.dart';
 import '../../services/enrollment_public/i_public_enrollment_service.dart';
 import 'i_public_enrollment_repository.dart';
 
-class PublicEnrollmentRepository implements IPublicEnrollmentRepository<EnrollmentInDto> {
+class PublicEnrollmentRepository
+    implements IPublicEnrollmentRepository<EnrollmentInDto> {
   final IPublicEnrollmentService service;
 
   PublicEnrollmentRepository({required this.service});
@@ -32,15 +33,12 @@ class PublicEnrollmentRepository implements IPublicEnrollmentRepository<Enrollme
       if (e.response != null && e.response!.data != null) {
         return ApiResponse.failure(e.response!.data['message']);
       }
-      return ApiResponse.failure(e.message);
+      return ApiResponse.failure(e.message ?? 'Unknown error');
     }
   }
 
-
   @override
-  Future<bool?> delete({required String uuid}) async {
-
-  }
+  Future<bool?> delete({required String uuid}) async {}
 
   @override
   Future<Status<EnrollmentInDto>> get({required String uuid}) {
@@ -49,7 +47,12 @@ class PublicEnrollmentRepository implements IPublicEnrollmentRepository<Enrollme
   }
 
   @override
-  Future<Status<List<EnrollmentInDto>>?> getAll({int? limit, int? offset, bool? isFeatured, String? position, String? companyId}) {
+  Future<Status<List<EnrollmentInDto>>?> getAll(
+      {int? limit,
+      int? offset,
+      bool? isFeatured,
+      String? position,
+      String? companyId}) {
     // TODO: implement getAll
     throw UnimplementedError();
   }
@@ -61,10 +64,8 @@ class PublicEnrollmentRepository implements IPublicEnrollmentRepository<Enrollme
   }
 
   @override
-
   Future<Status<List<LocationDto>>> getLocations() async {
     try {
-
       final response = await service.locations();
 
       // Ensure the data is properly typed as List<dynamic>
@@ -84,15 +85,13 @@ class PublicEnrollmentRepository implements IPublicEnrollmentRepository<Enrollme
     }
   }
 
-
-
-
-
   @override
-  Future<Status<MemberShipCard>> getMembershipCard({required String uuid}) async{
+  Future<Status<MemberShipCard>> getMembershipCard(
+      {required String uuid}) async {
     // TODO: implement getMembershipCard
     try {
-      final response = await service.membership_card(uuid: 'feb656f8-b9ea-4c88-bdb8-00d2a1aa2fa2');
+      final response = await service.membership_card(
+          uuid: 'feb656f8-b9ea-4c88-bdb8-00d2a1aa2fa2');
       //feb656f8-b9ea-4c88-bdb8-00d2a1aa2fa2
       // Check if the response status code is 200
       if (response.statusCode == 200) {
@@ -112,8 +111,7 @@ class PublicEnrollmentRepository implements IPublicEnrollmentRepository<Enrollme
   }
 
   @override
-  Future<ApiResponse> enrollmentSubmit(data)  async{
-
+  Future<ApiResponse> enrollmentSubmit(data) async {
     try {
       final response = await service.enrollmentR(data);
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -124,13 +122,12 @@ class PublicEnrollmentRepository implements IPublicEnrollmentRepository<Enrollme
       if (e.response != null && e.response!.data != null) {
         return ApiResponse.failure(e.response!.data['message']);
       }
-      return ApiResponse.failure(e.message);
+      return ApiResponse.failure(e.message ?? 'Unknown error');
     }
   }
 
-
   @override
-  Future<Status<List<PublicHealthServiceProvider>>> getHospitals() async{
+  Future<Status<List<PublicHealthServiceProvider>>> getHospitals() async {
     try {
       final response = await service.hospitals();
 
@@ -151,9 +148,8 @@ class PublicEnrollmentRepository implements IPublicEnrollmentRepository<Enrollme
     }
   }
 
-
   @override
-  Future<Status<NationalID>> getNationalId(String nationalId) async{
+  Future<Status<NationalID>> getNationalId(String nationalId) async {
     try {
       final response = await service.nationalId(nationalid: nationalId);
       if (response.statusCode == 200) {
@@ -171,8 +167,4 @@ class PublicEnrollmentRepository implements IPublicEnrollmentRepository<Enrollme
       return Status.failure(reason: errMsg);
     }
   }
-
-
-
 }
-

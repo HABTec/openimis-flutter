@@ -19,6 +19,8 @@ class ApiRoutes {
   static const MEMBERSHIP_CARD = "$_API/membership/card/";
   static const SEARCH = "$_API/insuree-information/";
   static const LOGIN = "$_API/login";
+  static const GRAPHQL = "/api/graphql";
+  static const CURRENT_USER = "/api/core/users/current_user/";
   static const CUSTOMERS = "$_API/profile";
   static const TOGGLE_SAVE = "$CUSTOMERS/save/";
   static const INSUREE_VALIDATION = "$_API/register/";

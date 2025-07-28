@@ -38,7 +38,7 @@ class Body extends GetView<AuthController> {
               ),
               SizedBox(height: 20.h),
               // Add some spacing between the logo and the header
-              Header(title: "login_to_your_account".tr),
+              Header(title: "Login to your account".tr),
               SizedBox(height: 30.h),
               const LoginForm(),
               SizedBox(height: 50.h),
@@ -69,8 +69,7 @@ class Body extends GetView<AuthController> {
                 final isBiometricEnabled = controller.isBiometricEnabled.value;
                 return isBiometricEnabled
                     ? IconButton(
-                  enableFeedback: true,
-
+                        enableFeedback: true,
                         icon: const HeroIcon(
                           color: Colors.teal,
                           HeroIcons.fingerPrint,
@@ -85,7 +84,6 @@ class Body extends GetView<AuthController> {
                     : const SizedBox
                         .shrink(); // If biometric is not enabled, leave the space empty
               }),
-
             ],
           ),
         )

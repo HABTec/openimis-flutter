@@ -1,0 +1,1464 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
+import '../../../data/remote/services/enrollment/reference_data_service.dart';
+import '../../../data/remote/services/enrollment/enhanced_insuree_service.dart';
+import '../../../data/remote/dto/enrollment/insuree_dto.dart';
+import '../../../data/remote/dto/enrollment/profession_dto.dart';
+import '../../../data/remote/dto/enrollment/education_dto.dart';
+import '../../../data/remote/dto/enrollment/relation_dto.dart';
+import '../../../data/remote/dto/enrollment/family_type_dto.dart';
+import '../../../data/remote/dto/enrollment/confirmation_type_dto.dart';
+import '../../../data/remote/dto/enrollment/location_hierarchy_dto.dart';
+import '../../../utils/enhanced_database_helper.dart';
+import '../../../di/locator.dart';
+import '../../../widgets/snackbars.dart';
+import '../../auth/controllers/auth_controller.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:intl/intl.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../../core/theme/app_theme.dart';
+
+class EnhancedEnrollmentController extends GetxController {
+  // Services
+  final ReferenceDataService _referenceService = getIt<ReferenceDataService>();
+  final EnhancedInsureeService _insureeService =
+      getIt<EnhancedInsureeService>();
+  final EnhancedDatabaseHelper _dbHelper = getIt<EnhancedDatabaseHelper>();
+  final Uuid _uuid = const Uuid();
+
+  // Form keys
+  final GlobalKey<FormState> familyFormKey = GlobalKey<FormState>();
+  final GlobalKey<FormState> memberFormKey = GlobalKey<FormState>();
+
+  // Loading states
+  final RxBool isLoading = false.obs;
+  final RxBool isSyncing = false.obs;
+  final RxBool isOnline = true.obs;
+  final RxBool isReferenceDataReady = false.obs;
+
+  // Current step in multi-step form
+  final RxInt currentStep = 1.obs;
+  final int totalSteps = 5;
+
+  // CHF ID Format Selection
+  final RxInt chfIdFormat =
+      1.obs; // 1=region+district+auto, 2=district+auto, 3=auto only
+
+  // Family Head Form Controllers
+  final TextEditingController headFirstNameController = TextEditingController();
+  final TextEditingController headLastNameController = TextEditingController();
+  final TextEditingController headPhoneController = TextEditingController();
+  final TextEditingController headEmailController = TextEditingController();
+  final TextEditingController headPassportController = TextEditingController();
+  final TextEditingController headDobController = TextEditingController();
+
+  // Family Details Controllers
+  final TextEditingController addressController = TextEditingController();
+  final TextEditingController confirmationNumberController =
+      TextEditingController();
+
+  // Member Form Controllers
+  final TextEditingController memberFirstNameController =
+      TextEditingController();
+  final TextEditingController memberLastNameController =
+      TextEditingController();
+  final TextEditingController memberPhoneController = TextEditingController();
+  final TextEditingController memberEmailController = TextEditingController();
+  final TextEditingController memberPassportController =
+      TextEditingController();
+  final TextEditingController memberDobController = TextEditingController();
+
+  // Observable form fields
+  final RxString headGender = ''.obs;
+  final RxString headMaritalStatus = 'N'.obs;
+  final RxString headIdType = 'D'.obs;
+  final RxInt headProfessionId = 0.obs;
+  final RxInt headEducationId = 0.obs;
+  final RxBool povertyStatus = false.obs;
+  final RxString familyTypeId = 'H'.obs;
+  final RxString confirmationTypeId = 'A'.obs;
+  // Location selection (cascading)
+  final RxString selectedRegionId = ''.obs;
+  final RxString selectedDistrictId = ''.obs;
+  final RxString selectedMunicipalityId = ''.obs;
+  final RxString selectedVillageId = ''.obs;
+
+  // Filtered location lists (based on parent selection)
+  final RxList<FlatLocationDto> filteredDistricts = <FlatLocationDto>[].obs;
+  final RxList<FlatLocationDto> filteredMunicipalities =
+      <FlatLocationDto>[].obs;
+  final RxList<FlatLocationDto> filteredVillages = <FlatLocationDto>[].obs;
+
+  // Member form fields
+  final RxString memberGender = ''.obs;
+  final RxString memberMaritalStatus = 'N'.obs;
+  final RxString memberIdType = 'D'.obs;
+  final RxInt memberProfessionId = 0.obs;
+  final RxInt memberEducationId = 0.obs;
+  final RxInt memberRelationshipId = 0.obs;
+
+  // Photo handling
+  final Rx<XFile?> headPhoto = Rx<XFile?>(null);
+  final Rx<XFile?> memberPhoto = Rx<XFile?>(null);
+
+  // Reference data
+  final RxList<ProfessionDto> professions = <ProfessionDto>[].obs;
+  final RxList<EducationDto> educations = <EducationDto>[].obs;
+  final RxList<RelationDto> relations = <RelationDto>[].obs;
+  final RxList<FamilyTypeDto> familyTypes = <FamilyTypeDto>[].obs;
+  final RxList<ConfirmationTypeDto> confirmationTypes =
+      <ConfirmationTypeDto>[].obs;
+  final RxList<FlatLocationDto> regions = <FlatLocationDto>[].obs;
+  final RxList<FlatLocationDto> districts = <FlatLocationDto>[].obs;
+  final RxList<FlatLocationDto> municipalities = <FlatLocationDto>[].obs;
+  final RxList<FlatLocationDto> villages = <FlatLocationDto>[].obs;
+
+  // Current family data
+  final Rx<FamilyDto?> currentFamily = Rx<FamilyDto?>(null);
+  final RxList<InsureeDto> familyMembers = <InsureeDto>[].obs;
+
+  // Payment related observables
+  final RxBool showPaymentSection = false.obs;
+  final RxString paymentMethod = 'online'.obs;
+  final RxBool isOfflinePayment = false.obs;
+
+  // Transaction ID and OCR related properties
+  final RxString transactionId = ''.obs;
+  final TextEditingController transactionIdController = TextEditingController();
+  final RxString ocrText = ''.obs;
+  final RxString extractedTransactionId = ''.obs;
+  final RxBool isProcessingOCR = false.obs;
+  final Rxn<XFile> receiptPhoto = Rxn<XFile>();
+
+  // Contribution calculation
+  final RxDouble calculatedContribution = 0.0.obs;
+  final RxString membershipType = 'Paying'.obs;
+  final RxString membershipLevel = 'Level 1'.obs;
+  final RxString areaType = 'Urban'.obs;
+
+  // Gender options
+  final List<Map<String, String>> genderOptions = [
+    {'value': 'M', 'label': 'Male'},
+    {'value': 'F', 'label': 'Female'},
+  ];
+
+  // Marital status options
+  final List<Map<String, String>> maritalStatusOptions = [
+    {'value': 'N', 'label': 'Not Specified'},
+    {'value': 'S', 'label': 'Single'},
+    {'value': 'M', 'label': 'Married'},
+    {'value': 'D', 'label': 'Divorced'},
+    {'value': 'W', 'label': 'Widowed'},
+  ];
+
+  // ID type options (License)
+  final List<Map<String, String>> idTypeOptions = [
+    {'value': 'D', 'label': "Driver's License"},
+    {'value': 'N', 'label': 'National ID'},
+    {'value': 'P', 'label': 'Passport'},
+    {'value': 'V', 'label': 'Voter Card'},
+  ];
+
+  // CHF ID format options
+  final List<Map<String, String>> chfIdFormatOptions = [
+    {'value': '1', 'label': 'Region/District/Auto/Member/Admin/Year'},
+    {'value': '2', 'label': 'Auto/District/Member/Admin/Year'},
+    {'value': '3', 'label': 'Auto/Member/Admin/Year'},
+  ];
+
+  @override
+  void onInit() {
+    super.onInit();
+    _initConnectivityListener();
+    _checkReferenceDataAndInit();
+    _setupLocationListeners();
+  }
+
+  void _initConnectivityListener() {
+    Connectivity().onConnectivityChanged.listen((result) {
+      isOnline.value = result != ConnectivityResult.none;
+    });
+
+    Connectivity().checkConnectivity().then((result) {
+      isOnline.value = result != ConnectivityResult.none;
+    });
+  }
+
+  void _setupLocationListeners() {
+    // Listen for region changes
+    ever(selectedRegionId, (regionId) {
+      if (regionId.isNotEmpty) {
+        _filterDistrictsByRegion(regionId);
+        // Clear dependent selections
+        selectedDistrictId.value = '';
+        selectedMunicipalityId.value = '';
+        selectedVillageId.value = '';
+        filteredMunicipalities.clear();
+        filteredVillages.clear();
+      }
+    });
+
+    // Listen for district changes
+    ever(selectedDistrictId, (districtId) {
+      if (districtId.isNotEmpty) {
+        _filterMunicipalitiesByDistrict(districtId);
+        // Clear dependent selections
+        selectedMunicipalityId.value = '';
+        selectedVillageId.value = '';
+        filteredVillages.clear();
+      }
+    });
+
+    // Listen for municipality changes
+    ever(selectedMunicipalityId, (municipalityId) {
+      if (municipalityId.isNotEmpty) {
+        _filterVillagesByMunicipality(municipalityId);
+        // Clear dependent selections
+        selectedVillageId.value = '';
+      }
+    });
+  }
+
+  void _filterDistrictsByRegion(String regionId) {
+    print("=== FILTERING DISTRICTS BY REGION: $regionId ===");
+    print("Total districts available: ${districts.length}");
+
+    // Show all districts and their parent IDs
+    for (var district in districts) {
+      print(
+          "District: ${district.name} (${district.id}) -> parentId: ${district.parentId}");
+    }
+
+    final filteredList =
+        districts.where((district) => district.parentId == regionId).toList();
+
+    print("Filtered districts found: ${filteredList.length}");
+    for (var district in filteredList) {
+      print("Filtered: ${district.name} -> parentId: ${district.parentId}");
+    }
+
+    filteredDistricts.assignAll(filteredList);
+    print("=== END FILTERING ===");
+  }
+
+  void _filterMunicipalitiesByDistrict(String districtId) {
+    final filteredList = municipalities
+        .where((municipality) => municipality.parentId == districtId)
+        .toList();
+    filteredMunicipalities.assignAll(filteredList);
+  }
+
+  void _filterVillagesByMunicipality(String municipalityId) {
+    final filteredList = villages
+        .where((village) => village.parentId == municipalityId)
+        .toList();
+    filteredVillages.assignAll(filteredList);
+  }
+
+  Future<void> _checkReferenceDataAndInit() async {
+    try {
+      isLoading.value = true;
+
+      // Check if reference data is already cached
+      final needsSync = await _dbHelper.needsReferenceDataSync();
+
+      if (needsSync && isOnline.value) {
+        // Show dialog to sync reference data
+        final shouldSync = await Get.dialog<bool>(
+          AlertDialog(
+            title: Text('Sync Required'),
+            content: Text(
+                'Reference data needs to be synchronized before creating families. This includes locations, professions, education levels, and other required data.\n\nWould you like to sync now?'),
+            actions: [
+              TextButton(
+                onPressed: () => Get.back(result: false),
+                child: Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Get.back(result: true),
+                child: Text('Sync Now'),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldSync == true) {
+          await syncReferenceData();
+        } else {
+          // Don't allow form access without reference data
+          Get.back();
+          SnackBars.warning('Sync Required',
+              'Please sync reference data before creating families');
+          return;
+        }
+      }
+
+      // Load cached reference data
+      await _loadReferenceData();
+      isReferenceDataReady.value = true;
+    } catch (e) {
+      SnackBars.failure('Error', 'Failed to initialize: $e');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  Future<void> syncReferenceData() async {
+    try {
+      isSyncing.value = true;
+
+      final result = await _referenceService.syncAllReferenceData();
+
+      if (result.error) {
+        SnackBars.failure('Sync Failed', result.message);
+        throw Exception(result.message);
+      } else {
+        SnackBars.success('Success', 'Reference data synced successfully');
+      }
+    } catch (e) {
+      rethrow;
+    } finally {
+      isSyncing.value = false;
+    }
+  }
+
+  Future<void> _loadReferenceData() async {
+    try {
+      // Load all reference data in parallel
+      final futures = [
+        _referenceService.getProfessions(),
+        _referenceService.getEducations(),
+        _referenceService.getRelations(),
+        _referenceService.getFamilyTypes(),
+        _referenceService.getConfirmationTypes(),
+        _referenceService.getLocationsByType('R'), // Regions
+        _referenceService.getLocationsByType('D'), // Districts
+        _referenceService.getLocationsByType('W'), // Municipalities
+        _referenceService.getLocationsByType('V'), // Villages
+      ];
+
+      final results = await Future.wait(futures);
+
+      professions.assignAll(results[0] as List<ProfessionDto>);
+      educations.assignAll(results[1] as List<EducationDto>);
+      relations.assignAll(results[2] as List<RelationDto>);
+      familyTypes.assignAll(results[3] as List<FamilyTypeDto>);
+      confirmationTypes.assignAll(results[4] as List<ConfirmationTypeDto>);
+      regions.assignAll(results[5] as List<FlatLocationDto>);
+      districts.assignAll(results[6] as List<FlatLocationDto>);
+      municipalities.assignAll(results[7] as List<FlatLocationDto>);
+      villages.assignAll(results[8] as List<FlatLocationDto>);
+
+      print("Loaded locations:");
+      print("Regions: ${regions.length}");
+      print("Districts: ${districts.length}");
+      print("Municipalities: ${municipalities.length}");
+      print("Villages: ${villages.length}");
+
+      if (districts.isNotEmpty) {
+        print("First district: ${districts.first.toJson()}");
+      }
+
+      // Set default values if available
+      if (professions.isNotEmpty)
+        headProfessionId.value = professions.first.id ?? 0;
+      if (educations.isNotEmpty)
+        headEducationId.value = educations.first.id ?? 0;
+      if (familyTypes.isNotEmpty)
+        familyTypeId.value = familyTypes.first.code ?? 'H';
+      if (confirmationTypes.isNotEmpty)
+        confirmationTypeId.value = confirmationTypes.first.code ?? 'A';
+    } catch (e) {
+      SnackBars.failure('Error', 'Failed to load reference data: $e');
+    }
+  }
+
+  // Manual resync of reference data
+  Future<void> resyncReferenceData() async {
+    try {
+      isLoading.value = true;
+      final result = await _referenceService.resyncAllReferenceData();
+
+      if (result.error == null) {
+        // Reload reference data after successful sync
+        await _loadReferenceData();
+        SnackBars.success('Success', 'Reference data synced successfully');
+      } else {
+        SnackBars.failure(
+            'Error', 'Failed to resync reference data: ${result.error}');
+      }
+    } catch (e) {
+      SnackBars.failure('Error', 'Failed to resync reference data: $e');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // CHF ID Generation Logic
+  String _generateChfId(int autoId, int memberNo) {
+    final currentYear = DateTime.now().year;
+    final adminId = _getAdminId();
+
+    // Get location codes for formats 1 and 2
+    String? regionCode;
+    String? districtCode;
+
+    if (selectedVillageId.value.isNotEmpty) {
+      // Find the selected location (should be a village)
+      final selectedLocation =
+          villages.firstWhereOrNull((loc) => loc.id == selectedVillageId.value);
+
+      if (selectedLocation != null) {
+        // Extract district from full path
+        final pathParts = selectedLocation.fullPath?.split(' > ') ?? [];
+        if (pathParts.length >= 2) {
+          regionCode = _abbreviate(pathParts[0]);
+          districtCode = _abbreviate(pathParts[1]);
+        }
+      }
+    }
+
+    // Generate CHF ID based on selected format
+    switch (chfIdFormat.value) {
+      case 1: // region/district/auto/member/admin/year
+        if (regionCode == null || districtCode == null) {
+          throw Exception('Location required for this CHF ID format');
+        }
+        return '$regionCode/$districtCode/${autoId.toString().padLeft(4, '0')}/$memberNo/$adminId/$currentYear';
+
+      case 2: // auto/district/member/admin/year
+        if (districtCode == null) {
+          throw Exception('District location required for this CHF ID format');
+        }
+        return '${autoId.toString().padLeft(4, '0')}/$districtCode/$memberNo/$adminId/$currentYear';
+
+      case 3: // auto/member/admin/year
+      default:
+        return '${autoId.toString().padLeft(4, '0')}/$memberNo/$adminId/$currentYear';
+    }
+  }
+
+  String _abbreviate(String locationName) {
+    final words = locationName.trim().split(' ');
+    if (words.length == 1) {
+      final word = words[0];
+      if (word.length == 3) return word.toUpperCase();
+      if (word.length > 3) return word.substring(0, 2).toUpperCase();
+      return word.toUpperCase();
+    }
+    // Multiple words -> first char of each word
+    return words
+        .map((word) => word.isNotEmpty ? word[0] : '')
+        .join('')
+        .toUpperCase();
+  }
+
+  int _getAdminId() {
+    // TODO: Get actual admin/officer ID from auth
+    return 1; // Default admin ID
+  }
+
+  // Contribution Calculation
+  Future<void> calculateContribution() async {
+    try {
+      // Basic contribution calculation logic
+      double baseRate = 50.0; // Base rate
+      double memberRate = 25.0; // Per member rate
+
+      // Adjust based on membership type and level
+      if (membershipType.value == 'Indigent') {
+        baseRate = 0.0; // Free for indigent
+        memberRate = 0.0;
+      } else if (membershipLevel.value == 'Level 2') {
+        baseRate *= 1.5; // 50% increase for Level 2
+        memberRate *= 1.5;
+      }
+
+      // Area type adjustment
+      if (areaType.value == 'Rural') {
+        baseRate *= 0.8; // 20% discount for rural
+        memberRate *= 0.8;
+      }
+
+      // Poverty status discount
+      if (povertyStatus.value) {
+        baseRate *= 0.5; // 50% discount for poverty
+        memberRate *= 0.5;
+      }
+
+      // Calculate total (base + members)
+      final memberCount = familyMembers.length + 1; // +1 for head
+      calculatedContribution.value =
+          baseRate + (memberRate * (memberCount - 1));
+    } catch (e) {
+      SnackBars.failure('Error', 'Failed to calculate contribution: $e');
+    }
+  }
+
+  // Step Navigation
+  void nextStep() {
+    if (currentStep.value < totalSteps) {
+      if (_validateCurrentStep()) {
+        currentStep.value++;
+        if (currentStep.value == 4) {
+          // Payment step
+          calculateContribution();
+          showPaymentSection.value = true;
+        }
+      }
+    }
+  }
+
+  void previousStep() {
+    if (currentStep.value > 1) {
+      currentStep.value--;
+    }
+  }
+
+  bool _validateCurrentStep() {
+    switch (currentStep.value) {
+      case 1: // Family Head Information
+        return familyFormKey.currentState?.validate() ?? false;
+      case 2: // Location & Family Details
+        return selectedVillageId.value.isNotEmpty;
+      case 3: // Family Members (optional)
+        return true; // Members are optional
+      case 4: // Payment Method
+        return true; // Validation handled in payment section
+      default:
+        return true;
+    }
+  }
+
+  String getStepTitle() {
+    switch (currentStep.value) {
+      case 1:
+        return 'Family Head Information';
+      case 2:
+        return 'Location & Family Details';
+      case 3:
+        return 'Family Members';
+      case 4:
+        return 'Payment & Contribution';
+      case 5:
+        return 'Review & Submit';
+      default:
+        return 'Family Registration';
+    }
+  }
+
+  // Photo handling
+  Future<void> pickHeadPhoto() async {
+    try {
+      final picker = ImagePicker();
+      final image = await picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 800,
+        maxHeight: 600,
+        imageQuality: 80,
+      );
+
+      if (image != null) {
+        headPhoto.value = image;
+      }
+    } catch (e) {
+      SnackBars.failure('Error', 'Failed to capture photo: $e');
+    }
+  }
+
+  Future<void> pickMemberPhoto() async {
+    try {
+      final picker = ImagePicker();
+      final image = await picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 800,
+        maxHeight: 600,
+        imageQuality: 80,
+      );
+
+      if (image != null) {
+        memberPhoto.value = image;
+      }
+    } catch (e) {
+      SnackBars.failure('Error', 'Failed to capture photo: $e');
+    }
+  }
+
+  // Add family member
+  Future<void> addFamilyMember() async {
+    if (!(memberFormKey.currentState?.validate() ?? false)) {
+      return;
+    }
+
+    try {
+      // Convert photo to base64 if available
+      String? photoBase64;
+      if (memberPhoto.value != null) {
+        final bytes = await File(memberPhoto.value!.path).readAsBytes();
+        photoBase64 = base64Encode(bytes);
+      }
+
+      // Generate CHF ID for member
+      final memberNo =
+          familyMembers.length + 2; // +1 for head, +1 for this member
+      final chfId =
+          _generateChfId(DateTime.now().millisecondsSinceEpoch, memberNo);
+
+      final member = InsureeDto(
+        chfId: chfId,
+        lastName: memberLastNameController.text.trim(),
+        otherNames: memberFirstNameController.text.trim(),
+        genderId: memberGender.value,
+        dob: memberDobController.text,
+        head: false,
+        marital: memberMaritalStatus.value,
+        passport: memberPassportController.text.trim(),
+        phone: memberPhoneController.text.trim(),
+        email: memberEmailController.text.trim(),
+        photo: photoBase64 != null
+            ? PhotoDto(
+                photo: photoBase64,
+                officerId: _getAdminId(),
+                date: DateTime.now().toIso8601String().split('T')[0],
+              )
+            : null,
+        cardIssued: true,
+        professionId: memberProfessionId.value,
+        educationId: memberEducationId.value,
+        typeOfIdId: memberIdType.value,
+        relationshipId: memberRelationshipId.value,
+        status: 'AC',
+        jsonExt: '{}',
+        syncStatus: 0,
+      );
+
+      familyMembers.add(member);
+      _clearMemberForm();
+
+      // Recalculate contribution
+      calculateContribution();
+
+      SnackBars.success('Success', 'Family member added successfully');
+    } catch (e) {
+      SnackBars.failure('Error', 'Failed to add family member: $e');
+    }
+  }
+
+  // Remove family member
+  void removeFamilyMember(int index) {
+    if (index >= 0 && index < familyMembers.length) {
+      familyMembers.removeAt(index);
+      calculateContribution();
+      SnackBars.success('Success', 'Family member removed');
+    }
+  }
+
+  // Clear member form
+  void _clearMemberForm() {
+    memberFirstNameController.clear();
+    memberLastNameController.clear();
+    memberPhoneController.clear();
+    memberEmailController.clear();
+    memberPassportController.clear();
+    memberDobController.clear();
+    memberGender.value = '';
+    memberMaritalStatus.value = 'N';
+    memberIdType.value = 'D';
+    memberProfessionId.value =
+        professions.isNotEmpty ? professions.first.id ?? 0 : 0;
+    memberEducationId.value =
+        educations.isNotEmpty ? educations.first.id ?? 0 : 0;
+    memberRelationshipId.value =
+        relations.isNotEmpty ? relations.first.id ?? 0 : 0;
+    memberPhoto.value = null;
+  }
+
+  // Submit family registration
+  Future<void> submitFamilyRegistration() async {
+    try {
+      isLoading.value = true;
+
+      // Generate CHF ID for head
+      final headChfId =
+          _generateChfId(DateTime.now().millisecondsSinceEpoch, 1);
+
+      // Convert head photo to base64 if available
+      String? headPhotoBase64;
+      if (headPhoto.value != null) {
+        final bytes = await File(headPhoto.value!.path).readAsBytes();
+        headPhotoBase64 = base64Encode(bytes);
+      }
+
+      // Create head insuree
+      final headInsuree = InsureeDto(
+        chfId: headChfId,
+        lastName: headLastNameController.text.trim(),
+        otherNames: headFirstNameController.text.trim(),
+        genderId: headGender.value,
+        dob: headDobController.text,
+        head: true,
+        marital: headMaritalStatus.value,
+        passport: headPassportController.text.trim(),
+        phone: headPhoneController.text.trim(),
+        email: headEmailController.text.trim(),
+        photo: headPhotoBase64 != null
+            ? PhotoDto(
+                photo: headPhotoBase64,
+                officerId: _getAdminId(),
+                date: DateTime.now().toIso8601String().split('T')[0],
+              )
+            : null,
+        cardIssued: true,
+        professionId: headProfessionId.value,
+        educationId: headEducationId.value,
+        typeOfIdId: headIdType.value,
+        status: 'AC',
+        jsonExt: '{}',
+        syncStatus: 0,
+      );
+
+      // Create family
+      final family = FamilyDto(
+        headInsuree: headInsuree,
+        locationId: int.tryParse(selectedVillageId.value) ?? 0,
+        poverty: povertyStatus.value,
+        familyTypeId: familyTypeId.value,
+        address: addressController.text.trim(),
+        confirmationTypeId: confirmationTypeId.value,
+        confirmationNo: confirmationNumberController.text.trim(),
+        jsonExt: '{}',
+        syncStatus: 0,
+      );
+
+      // Create family in database
+      final result = await _insureeService.createFamily(family);
+
+      if (result.error) {
+        SnackBars.failure('Registration Failed', result.message);
+        return;
+      }
+
+      final localFamilyId = result.data as int;
+      currentFamily.value = family.copyWith(localId: localFamilyId);
+
+      // Add family members
+      for (final member in familyMembers) {
+        member.localFamilyId = localFamilyId;
+        final memberResult = await _insureeService.createInsuree(member);
+        if (memberResult.error) {
+          SnackBars.warning(
+              'Warning', 'Failed to add member: ${memberResult.message}');
+        }
+      }
+
+      // Handle payment
+      if (calculatedContribution.value > 0 && !isOfflinePayment.value) {
+        // Handle online payment
+        await _handleOnlinePayment();
+      } else if (calculatedContribution.value > 0 && isOfflinePayment.value) {
+        // Handle offline payment
+        await processOfflinePayment(fromRegistrationFlow: true);
+      } else {
+        // No payment required or indigent
+        _showSuccessPage();
+      }
+    } catch (e) {
+      SnackBars.failure('Error', 'Registration failed: $e');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  Future<void> _handleOnlinePayment() async {
+    // TODO: Implement online payment integration
+    SnackBars.info('Info', 'Online payment integration coming soon');
+    _showSuccessPage();
+  }
+
+  Future<void> _handleOfflinePayment() async {
+    // For offline payment, show invoice and mark as pending
+    _showOfflineInvoice();
+  }
+
+  void _showOfflineInvoice() {
+    Get.to(() => OfflinePaymentInvoiceView(
+          family: currentFamily.value!,
+          amount: calculatedContribution.value,
+          onPaymentRecorded: () => _showSuccessPage(),
+        ));
+  }
+
+  void _showSuccessPage() {
+    if (currentFamily.value == null) {
+      SnackBars.failure(
+          'Error', 'Family data is missing. Please try registering again.');
+      return;
+    }
+
+    Get.to(() => FamilyRegistrationSuccessView(
+          family: currentFamily.value!,
+          memberCount: familyMembers.length + 1,
+        ));
+  }
+
+  // Validation helpers
+  String? validateRequired(String? value, String fieldName) {
+    if (value == null || value.trim().isEmpty) {
+      return '$fieldName is required';
+    }
+    return null;
+  }
+
+  String? validatePhone(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Phone number is required';
+    }
+    if (!RegExp(r'^\+?[\d\s-()]+$').hasMatch(value.trim())) {
+      return 'Please enter a valid phone number';
+    }
+    return null;
+  }
+
+  String? validateEmail(String? value) {
+    if (value != null && value.trim().isNotEmpty) {
+      if (!GetUtils.isEmail(value.trim())) {
+        return 'Please enter a valid email address';
+      }
+    }
+    return null;
+  }
+
+  String? validateDate(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Date is required';
+    }
+    try {
+      DateTime.parse(value);
+      return null;
+    } catch (e) {
+      return 'Please enter a valid date (YYYY-MM-DD)';
+    }
+  }
+
+  // Temporary debug method to test location syncing
+  Future<void> debugTestLocationSync() async {
+    try {
+      isLoading.value = true;
+      print("Starting debug location sync...");
+
+      // Manually call the location sync
+      final result = await _referenceService.syncAllReferenceData();
+
+      if (!result.error) {
+        print("Location sync successful, reloading data...");
+        await _loadReferenceData();
+        SnackBars.success(
+            'Debug', 'Location sync completed - check console logs');
+      } else {
+        print("Location sync failed: ${result.error}");
+        SnackBars.failure('Debug', 'Location sync failed: ${result.error}');
+      }
+    } catch (e) {
+      print("Debug location sync error: $e");
+      SnackBars.failure('Debug', 'Location sync error: $e');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // Transaction ID and Payment Methods (Simplified version)
+
+  // Validate transaction ID
+  bool validateTransactionId(String id) {
+    return id.trim().length >= 8;
+  }
+
+  // Manual transaction ID entry
+  void setManualTransactionId(String id) {
+    transactionId.value = id.trim();
+    paymentMethod.value = 'offline_manual';
+    isOfflinePayment.value = true;
+  }
+
+  // Show transaction ID input dialog
+  void showTransactionIdDialog() {
+    Get.dialog(
+      AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16.r),
+        ),
+        title: Row(
+          children: [
+            Icon(Icons.receipt_long, color: AppTheme.primaryColor),
+            SizedBox(width: 8.w),
+            Text(
+              'Enter Transaction ID',
+              style: TextStyle(
+                fontSize: 18.sp,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.primaryColor,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Please enter the transaction ID from your PoS receipt:',
+              style: TextStyle(fontSize: 14.sp, color: Colors.grey[700]),
+            ),
+            SizedBox(height: 16.h),
+
+            // Manual entry section
+            Container(
+              padding: EdgeInsets.all(16.w),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(12.r),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.keyboard, color: Colors.blue, size: 20.w),
+                      SizedBox(width: 8.w),
+                      Text(
+                        'Manual Entry',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blue.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 12.h),
+                  TextFormField(
+                    controller: transactionIdController,
+                    decoration: InputDecoration(
+                      labelText: 'Transaction ID',
+                      hintText: 'e.g., TXN123456789',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8.r),
+                      ),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12.w,
+                        vertical: 12.h,
+                      ),
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                    onChanged: (value) {
+                      transactionId.value = value.trim();
+                    },
+                  ),
+                ],
+              ),
+            ),
+
+            SizedBox(height: 16.h),
+
+            // OCR placeholder section
+            Container(
+              padding: EdgeInsets.all(16.w),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(12.r),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.camera_alt, color: Colors.grey, size: 20.w),
+                      SizedBox(width: 8.w),
+                      Text(
+                        'Scan Receipt (Coming Soon)',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 8.h),
+                  Text(
+                    'OCR scanning feature will be available in a future update',
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+          Obx(() => ElevatedButton(
+                onPressed: transactionId.value.length >= 8
+                    ? () {
+                        if (validateTransactionId(transactionId.value)) {
+                          setManualTransactionId(transactionId.value);
+                          Get.back();
+                          SnackBars.success(
+                            'Success',
+                            'Transaction ID saved successfully',
+                          );
+                        } else {
+                          SnackBars.failure(
+                            'Invalid ID',
+                            'Please enter a valid transaction ID (minimum 8 characters)',
+                          );
+                        }
+                      }
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8.r),
+                  ),
+                ),
+                child: Text('Save'),
+              )),
+        ],
+      ),
+    );
+  }
+
+  // Handle offline payment process
+  Future<void> processOfflinePayment(
+      {bool fromRegistrationFlow = false}) async {
+    if (transactionId.value.isEmpty) {
+      SnackBars.warning(
+          'Missing Information', 'Please enter a transaction ID first');
+      showTransactionIdDialog();
+      return;
+    }
+
+    try {
+      isLoading.value = true;
+
+      // Create a simple offline payment record
+      final paymentData = {
+        'family_id': currentFamily.value?.localId ?? 0,
+        'transaction_id': transactionId.value,
+        'payment_method': paymentMethod.value,
+        'payment_date': DateTime.now().toIso8601String(),
+        'amount': calculatedContribution.value,
+        'sync_status': 'PENDING',
+      };
+
+      // For now, just show success - actual database implementation will be added later
+      SnackBars.success(
+          'Payment Recorded', 'Offline payment has been recorded successfully');
+
+      // Only show success page if called from registration flow and family data exists
+      if (fromRegistrationFlow && currentFamily.value != null) {
+        _showSuccessPage();
+      } else if (!fromRegistrationFlow) {
+        // When called from UI button, just mark payment as recorded
+        SnackBars.info('Payment Recorded',
+            'Payment has been marked as paid. Continue with registration.');
+      }
+    } catch (e) {
+      SnackBars.failure('Error', 'Failed to process offline payment: $e');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // Toggle payment method
+  void togglePaymentMethod() {
+    isOfflinePayment.toggle();
+    if (isOfflinePayment.value) {
+      paymentMethod.value = 'offline_manual';
+    } else {
+      paymentMethod.value = 'online';
+      transactionId.value = '';
+      transactionIdController.clear();
+      receiptPhoto.value = null;
+    }
+  }
+
+  // Clear payment data
+  void clearPaymentData() {
+    transactionId.value = '';
+    transactionIdController.clear();
+    ocrText.value = '';
+    extractedTransactionId.value = '';
+    receiptPhoto.value = null;
+    paymentMethod.value = 'online';
+    isOfflinePayment.value = false;
+  }
+
+  @override
+  void onClose() {
+    // Dispose controllers
+    headFirstNameController.dispose();
+    headLastNameController.dispose();
+    headPhoneController.dispose();
+    headEmailController.dispose();
+    headPassportController.dispose();
+    headDobController.dispose();
+    addressController.dispose();
+    confirmationNumberController.dispose();
+    memberFirstNameController.dispose();
+    memberLastNameController.dispose();
+    memberPhoneController.dispose();
+    memberEmailController.dispose();
+    memberPassportController.dispose();
+    memberDobController.dispose();
+    super.onClose();
+  }
+}
+
+// Success Page Widget
+class FamilyRegistrationSuccessView extends StatelessWidget {
+  final FamilyDto family;
+  final int memberCount;
+
+  const FamilyRegistrationSuccessView({
+    Key? key,
+    required this.family,
+    required this.memberCount,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    // Additional safety check
+    if (family.headInsuree == null) {
+      return Scaffold(
+        backgroundColor: Colors.red.shade50,
+        appBar: AppBar(
+          title: Text('Registration Error'),
+          backgroundColor: Colors.red,
+          foregroundColor: Colors.white,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error, size: 100, color: Colors.red),
+              SizedBox(height: 24),
+              Text(
+                'Registration Error',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red.shade700,
+                ),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Family data is incomplete. Please try registering again.',
+                style: TextStyle(fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 32),
+              ElevatedButton(
+                onPressed: () => Get.back(),
+                child: Text('Go Back'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.green.shade50,
+      appBar: AppBar(
+        title: Text('Registration Complete'),
+        backgroundColor: Colors.green,
+        foregroundColor: Colors.white,
+        automaticallyImplyLeading: false,
+      ),
+      body: Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.check_circle,
+                size: 100,
+                color: Colors.green,
+              ),
+              SizedBox(height: 24),
+              Text(
+                'Family Registered Successfully!',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green.shade700,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Family Head: ${family.headInsuree?.otherNames ?? 'N/A'} ${family.headInsuree?.lastName ?? 'N/A'}',
+                style: TextStyle(fontSize: 18),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 8),
+              Text(
+                'CHF ID: ${family.headInsuree?.chfId ?? 'Pending'}',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.blue.shade600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Total Members: $memberCount',
+                style: TextStyle(fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 32),
+              Container(
+                padding: EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Column(
+                  children: [
+                    Icon(Icons.info, color: Colors.blue.shade600),
+                    SizedBox(height: 8),
+                    Text(
+                      'Your family has been registered offline and will be synced to the server when internet connection is available.',
+                      style: TextStyle(
+                        color: Colors.blue.shade700,
+                        fontSize: 14,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 32),
+              ElevatedButton(
+                onPressed: () {
+                  Get.offAllNamed('/home');
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Text(
+                  'Go to Home',
+                  style: TextStyle(fontSize: 16),
+                ),
+              ),
+              SizedBox(height: 16),
+              TextButton(
+                onPressed: () {
+                  Get.toNamed('/sync-status');
+                },
+                child: Text(
+                  'View Sync Status',
+                  style: TextStyle(
+                    color: Colors.blue.shade600,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Offline Payment Invoice View
+class OfflinePaymentInvoiceView extends StatelessWidget {
+  final FamilyDto family;
+  final double amount;
+  final VoidCallback onPaymentRecorded;
+
+  const OfflinePaymentInvoiceView({
+    Key? key,
+    required this.family,
+    required this.amount,
+    required this.onPaymentRecorded,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Payment Invoice'),
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+      ),
+      body: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Invoice header
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'PAYMENT INVOICE',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue.shade700,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                      'Invoice Date: ${DateFormat('MMM dd, yyyy').format(DateTime.now())}'),
+                ],
+              ),
+            ),
+
+            SizedBox(height: 16),
+
+            // Family details
+            Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Family Details',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                        'Head: ${family.headInsuree?.otherNames} ${family.headInsuree?.lastName}'),
+                    Text('CHF ID: ${family.headInsuree?.chfId}'),
+                    Text('Phone: ${family.headInsuree?.phone}'),
+                  ],
+                ),
+              ),
+            ),
+
+            SizedBox(height: 16),
+
+            // Payment details
+            Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Payment Details',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Family Registration Fee:'),
+                        Text('ETB ${amount.toStringAsFixed(2)}'),
+                      ],
+                    ),
+                    Divider(),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Total Amount:',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          'ETB ${amount.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.green.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            Spacer(),
+
+            // Action buttons
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: onPaymentRecorded,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Text(
+                  'Mark as Paid (Offline)',
+                  style: TextStyle(fontSize: 16),
+                ),
+              ),
+            ),
+
+            SizedBox(height: 8),
+
+            Text(
+              'Note: This registration will be synced to the server when internet connection is available.',
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 12,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

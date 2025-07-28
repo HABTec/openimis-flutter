@@ -34,7 +34,7 @@ class EnrollmentRepository implements IEnrollmentRepository<EnrollmentInDto> {
       if (e.response != null && e.response!.data != null) {
         return ApiResponse.failure(e.response!.data['message']);
       }
-      return ApiResponse.failure(e.message);
+      return ApiResponse.failure(e.message ?? 'Unknown error');
     }
   }
 
@@ -148,7 +148,7 @@ class EnrollmentRepository implements IEnrollmentRepository<EnrollmentInDto> {
       if (e.response != null && e.response!.data != null) {
         return ApiResponse.failure(e.response!.data['message']);
       }
-      return ApiResponse.failure(e.message);
+      return ApiResponse.failure(e.message ?? 'Unknown error');
     }
   }
 

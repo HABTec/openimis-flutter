@@ -3,6 +3,7 @@ import 'package:dio/src/response.dart';
 import '../../../local/config/app_config.dart';
 import '../../api/api_routes.dart';
 import '../../api/dio_client.dart';
+import '../../dto/auth/graphql_auth_dto.dart';
 import 'i_auth_service.dart';
 import '../../base/idto.dart';
 
@@ -19,7 +20,6 @@ class AuthService implements IAuthService<IDto> {
       rethrow;
     }
   }
-
 
   @override
   Future<Response> registerCustomer({required IDto dto}) {
@@ -63,9 +63,23 @@ class AuthService implements IAuthService<IDto> {
     }
   }
 
+  // New GraphQL authentication methods
+  Future<Response> graphqlAuth(
+      {required String username, required String password}) async {
+    try {
+      final request =
+          GraphQLAuthRequest(username: username, password: password);
+      return await dioClient.post(ApiRoutes.GRAPHQL, data: request.toJson());
+    } catch (e) {
+      rethrow;
+    }
+  }
 
-
-
-
-
+  Future<Response> getCurrentUser() async {
+    try {
+      return await dioClient.get(ApiRoutes.CURRENT_USER);
+    } catch (e) {
+      rethrow;
+    }
+  }
 }

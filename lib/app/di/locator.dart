@@ -6,8 +6,11 @@ import 'package:openimis_app/app/data/remote/repositories/public_enrollment/publ
 import 'package:openimis_app/app/data/remote/repositories/root/root_repository.dart';
 import 'package:openimis_app/app/data/remote/services/enrollment/enrollment_service.dart';
 import 'package:openimis_app/app/data/remote/services/enrollment/family_service.dart';
+import 'package:openimis_app/app/data/remote/services/enrollment/reference_data_service.dart';
+import 'package:openimis_app/app/data/remote/services/enrollment/enhanced_insuree_service.dart';
 import 'package:openimis_app/app/data/remote/services/enrollment_public/public_enrollment_service.dart';
 import 'package:openimis_app/app/data/remote/services/root/root_service.dart';
+import 'package:openimis_app/app/utils/enhanced_database_helper.dart';
 import '../data/local/services/storage_service.dart';
 import '../data/remote/api/dio_client.dart';
 import '../data/remote/repositories/auth/auth_repository.dart';
@@ -36,6 +39,12 @@ Future<void> setupLocator() async {
 
   /// Family Service (GraphQL)
   getIt.registerSingleton(FamilyService(dioClient: getIt<DioClient>()));
+
+  /// Enhanced Enrollment Services
+  getIt.registerSingleton(ReferenceDataService(dioClient: getIt<DioClient>()));
+  getIt
+      .registerSingleton(EnhancedInsureeService(dioClient: getIt<DioClient>()));
+  getIt.registerSingleton(EnhancedDatabaseHelper());
 
   /// Enrolllment Service & Repo
   getIt.registerSingleton(EnrollmentService(dioClient: getIt<DioClient>()));

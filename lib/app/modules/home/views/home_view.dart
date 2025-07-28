@@ -97,7 +97,7 @@ class HomeView extends GetView<HomeController> {
                       title: 'New Family\nRegistration',
                       icon: HeroIcons.userGroup,
                       color: Color(0xFF036273),
-                      onTap: () => Get.toNamed('/enrollment'),
+                      onTap: () => Get.toNamed('/enhanced-enrollment'),
                     ),
                     _buildActionCard(
                       title: 'Family\nRecords',
@@ -112,10 +112,10 @@ class HomeView extends GetView<HomeController> {
                       onTap: () => _showComingSoonDialog('Membership Renewal'),
                     ),
                     _buildActionCard(
-                      title: 'Reports &\nAnalytics',
-                      icon: HeroIcons.chartBar,
-                      color: Color(0xFF036273).withOpacity(0.6),
-                      onTap: () => _showComingSoonDialog('Reports & Analytics'),
+                      title: 'Sync\nStatus',
+                      icon: HeroIcons.arrowPath,
+                      color: Color(0xFF036273).withOpacity(0.7),
+                      onTap: () => Get.toNamed('/sync-status'),
                     ),
                   ],
                 ),
@@ -249,7 +249,7 @@ class HomeView extends GetView<HomeController> {
                   title: 'New Family Registration',
                   onTap: () {
                     Get.back();
-                    Get.toNamed('/enrollment');
+                    Get.toNamed('/enhanced-enrollment');
                   },
                 ),
                 _buildDrawerItem(
@@ -258,6 +258,14 @@ class HomeView extends GetView<HomeController> {
                   onTap: () {
                     Get.back();
                     Get.toNamed('/enrollment-list');
+                  },
+                ),
+                _buildDrawerItem(
+                  icon: HeroIcons.arrowPath,
+                  title: 'Sync Status',
+                  onTap: () {
+                    Get.back();
+                    Get.toNamed('/sync-status');
                   },
                 ),
                 Divider(height: 1.h),

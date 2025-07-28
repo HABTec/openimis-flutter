@@ -128,8 +128,8 @@ class SettingsController extends GetxController {
         // Test with a simple endpoint (you can adjust this)
         await dioClient.get('/api/health-check',
             options: Options(
-              sendTimeout: 5000,
-              receiveTimeout: 5000,
+              sendTimeout: const Duration(seconds: 5),
+              receiveTimeout: const Duration(seconds: 5),
             ));
 
         Get.snackbar(
@@ -139,16 +139,26 @@ class SettingsController extends GetxController {
           colorText: Colors.white,
         );
       } catch (e) {
-        // Restore original URL on failure
-        dioClient.updateBaseUrl(originalUrl);
+        // Check if it's a 404 error - which is expected and means server is reachable
+        if (e is DioError && e.response?.statusCode == 404) {
+          Get.snackbar(
+            'Connection Successful',
+            'Successfully connected to $testUrl (404 is expected)',
+            backgroundColor: Colors.green,
+            colorText: Colors.white,
+          );
+        } else {
+          // Restore original URL on failure
+          dioClient.updateBaseUrl(originalUrl);
 
-        Get.snackbar(
-          'Connection Failed',
-          'Could not connect to $testUrl\nError: ${e.toString()}',
-          backgroundColor: Colors.red,
-          colorText: Colors.white,
-          duration: Duration(seconds: 5),
-        );
+          Get.snackbar(
+            'Connection Failed',
+            'Could not connect to $testUrl\nError: ${e.toString()}',
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+            duration: Duration(seconds: 5),
+          );
+        }
       }
     } catch (e) {
       Get.snackbar(
