@@ -12,19 +12,25 @@ class UserEntity implements IEntity {
   bool? isOfficer;
   bool? isInsuree;
   InsureeInfo? insureeInfo; // Add insureeInfo field
+  String? username;
+  String? csrfToken;
+  OfficerInfo? officerInfo; // For officer users
 
   UserEntity({
     required this.id,
     required this.name,
     required this.email,
-    required this.phoneNumber,
+    this.phoneNumber,
     required this.token,
-    required this.status,
-    required this.role,
-    required this.refresh,
-    required this.isOfficer,
-    required this.isInsuree,
+    this.status,
+    this.role,
+    this.refresh,
+    this.isOfficer,
+    this.isInsuree,
     this.insureeInfo, // Optional field
+    this.username,
+    this.csrfToken,
+    this.officerInfo,
   });
 
   @override
@@ -39,9 +45,15 @@ class UserEntity implements IEntity {
     refresh = map['refresh'];
     isOfficer = map['is_officer'];
     isInsuree = map['is_insuree'];
+    username = map['username'];
+    csrfToken = map['csrf_token'];
     // Deserialize insureeInfo if present
     insureeInfo = map['insuree_info'] != null
         ? InsureeInfo.fromMap(map['insuree_info'])
+        : null;
+    // Deserialize officerInfo if present
+    officerInfo = map['officer_info'] != null
+        ? OfficerInfo.fromMap(map['officer_info'])
         : null;
   }
 
@@ -58,11 +70,76 @@ class UserEntity implements IEntity {
     map['refresh'] = refresh;
     map['is_officer'] = isOfficer;
     map['is_insuree'] = isInsuree;
+    map['username'] = username;
+    map['csrf_token'] = csrfToken;
     // Serialize insureeInfo if present
     if (insureeInfo != null) {
       map['insuree_info'] = insureeInfo!.toMap();
     }
+    // Serialize officerInfo if present
+    if (officerInfo != null) {
+      map['officer_info'] = officerInfo!.toMap();
+    }
     return map;
+  }
+}
+
+// Define OfficerInfo class
+class OfficerInfo {
+  int? id;
+  String? language;
+  String? lastName;
+  String? otherNames;
+  int? healthFacilityId;
+  List<int>? rights;
+  bool? hasPassword;
+
+  OfficerInfo({
+    this.id,
+    this.language,
+    this.lastName,
+    this.otherNames,
+    this.healthFacilityId,
+    this.rights,
+    this.hasPassword,
+  });
+
+  OfficerInfo.fromMap(dynamic map) {
+    id = map['id'];
+    language = map['language'];
+    lastName = map['last_name'];
+    otherNames = map['other_names'];
+    healthFacilityId = map['health_facility_id'];
+    rights = map['rights'] != null ? List<int>.from(map['rights']) : null;
+    hasPassword = map['has_password'];
+  }
+
+  Map<String, dynamic> toMap() {
+    final map = <String, dynamic>{};
+    map['id'] = id;
+    map['language'] = language;
+    map['last_name'] = lastName;
+    map['other_names'] = otherNames;
+    map['health_facility_id'] = healthFacilityId;
+    map['rights'] = rights;
+    map['has_password'] = hasPassword;
+    return map;
+  }
+
+  Map<String, dynamic> toJson() {
+    return toMap();
+  }
+
+  factory OfficerInfo.fromJson(Map<String, dynamic> json) {
+    return OfficerInfo(
+      id: json['id'],
+      language: json['language'],
+      lastName: json['last_name'],
+      otherNames: json['other_names'],
+      healthFacilityId: json['health_facility_id'],
+      rights: json['rights'] != null ? List<int>.from(json['rights']) : null,
+      hasPassword: json['has_password'],
+    );
   }
 }
 
@@ -100,7 +177,6 @@ class InsureeInfo {
       'family': family,
     };
   }
-
 
   factory InsureeInfo.fromJson(Map<String, dynamic> json) {
     return InsureeInfo(

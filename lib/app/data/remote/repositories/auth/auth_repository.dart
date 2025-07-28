@@ -13,6 +13,7 @@ import '../../base/status.dart';
 import '../../dto/auth/login_out_dto.dart';
 import '../../dto/auth/register_company_out_dto.dart';
 import '../../dto/auth/register_customer_out_dto.dart';
+import '../../dto/auth/graphql_auth_dto.dart';
 import '../../exceptions/dio_exceptions.dart';
 import '../../services/auth/auth_service.dart';
 
@@ -37,7 +38,36 @@ class AuthRepository implements IAuthRepository<Status<dynamic>> {
     }
   }
 
-  
+  // New GraphQL login method
+  Future<Status<GraphQLAuthResponse>> graphqlLogin(
+      {required String username, required String password}) async {
+    try {
+      final response =
+          await authService.graphqlAuth(username: username, password: password);
+      final authResponse = GraphQLAuthResponse.fromJson(response.data);
+
+      // Store CSRF token in DioClient for future requests
+      final dioClient = authService.dioClient;
+      dioClient.storeCSRFToken(authResponse.getCsrfToken.csrfToken);
+
+      return Status.success(data: authResponse);
+    } on DioError catch (e) {
+      final errMsg = DioExceptions.fromDioError(e).toString();
+      return Status.failure(reason: errMsg);
+    }
+  }
+
+  // Get current user information
+  Future<Status<CurrentUserResponse>> getCurrentUser() async {
+    try {
+      final response = await authService.getCurrentUser();
+      return Status.success(data: CurrentUserResponse.fromJson(response.data));
+    } on DioError catch (e) {
+      final errMsg = DioExceptions.fromDioError(e).toString();
+      return Status.failure(reason: errMsg);
+    }
+  }
+
   /*
   * Local Storage
   * */
@@ -94,16 +124,15 @@ class AuthRepository implements IAuthRepository<Status<dynamic>> {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         return AsyncResult.success("Enrollment successful.");
-
       }
 
-      return AsyncResult.failure(response.data['message'] ?? "Unknown error occurred.");
+      return AsyncResult.failure(
+          response.data['message'] ?? "Unknown error occurred.");
     } on DioError catch (e) {
       final errMsg = DioExceptions.fromDioError(e).toString();
       return AsyncResult.failure(errMsg);
     }
   }
-
 
   @override
   Future<AsyncResult<String>> insureeValidation(data) async {
@@ -111,7 +140,8 @@ class AuthRepository implements IAuthRepository<Status<dynamic>> {
       final response = await authService.insureeValidation(data);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        return AsyncResult.success("Success OTP has been sent to your Mobile Number");
+        return AsyncResult.success(
+            "Success OTP has been sent to your Mobile Number");
       }
 
       return AsyncResult.failure(response.data ?? "Unknown error occurred.");
@@ -124,7 +154,7 @@ class AuthRepository implements IAuthRepository<Status<dynamic>> {
   }
 
   @override
-  Future<AsyncResult<bool>> usernameVerify(data) async{
+  Future<AsyncResult<bool>> usernameVerify(data) async {
     try {
       final response = await authService.userNameVerify(data);
 
@@ -142,20 +172,19 @@ class AuthRepository implements IAuthRepository<Status<dynamic>> {
   }
 
   @override
-  Future<AsyncResult<String>> insureeOTPResend(data) async{
+  Future<AsyncResult<String>> insureeOTPResend(data) async {
     try {
       final response = await authService.insureeOtpResend(data);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         return AsyncResult.success("Otp sent");
-
       }
 
-      return AsyncResult.failure(response.data['message'] ?? "Unknown error occurred.");
+      return AsyncResult.failure(
+          response.data['message'] ?? "Unknown error occurred.");
     } on DioError catch (e) {
       final errMsg = DioExceptions.fromDioError(e).toString();
       return AsyncResult.failure(errMsg);
     }
   }
-  
 }

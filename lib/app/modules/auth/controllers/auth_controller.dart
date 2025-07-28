@@ -18,7 +18,9 @@ import '../../../data/remote/dto/auth/register_company_dto.dart';
 import '../../../data/remote/dto/auth/register_company_out_dto.dart';
 import '../../../data/remote/dto/auth/register_customer_dto.dart';
 import '../../../data/remote/dto/auth/register_customer_out_dto.dart';
+import '../../../data/remote/dto/auth/graphql_auth_dto.dart';
 import '../../../data/remote/repositories/auth/auth_repository.dart';
+import '../../../data/remote/api/dio_client.dart';
 import '../../../di/locator.dart';
 import '../../../domain/enums/user_type.dart';
 import '../../../routes/app_pages.dart';
@@ -31,9 +33,7 @@ class AuthController extends GetxController {
   final LocalAuthentication auth = LocalAuthentication();
   final GetStorage storage = GetStorage();
 
-
   var isFirstTime = true.obs;
-
 
   var isBiometricEnabled = false.obs;
 
@@ -52,11 +52,14 @@ class AuthController extends GetxController {
   final customerChfidController = TextEditingController(text: '045802525');
   final customerUsernameController = TextEditingController();
   final customerHeadChfidController = TextEditingController(text: '048651094');
-  final customerPhoneNumberController = TextEditingController(text: '9843317526');
-  final customerConfirmPasswordController = TextEditingController(text: 'Apple@12345');
-  final customerEmailController = TextEditingController(text: 'kadl.invoker@gmail.com');
+  final customerPhoneNumberController =
+      TextEditingController(text: '9843317526');
+  final customerConfirmPasswordController =
+      TextEditingController(text: 'Apple@12345');
+  final customerEmailController =
+      TextEditingController(text: 'kadl.invoker@gmail.com');
   final customerPasswordController = TextEditingController(text: 'Apple@12345');
-  dynamic  customerOTPController = TextEditingController();
+  dynamic customerOTPController = TextEditingController();
 
   /*
   * Company Form Fields
@@ -69,12 +72,10 @@ class AuthController extends GetxController {
   final companyCountryController = TextEditingController();
   final companyPasswordController = TextEditingController();
 
-
   final Rx<Status> _configStatus = Rx(const Status.idle());
 
   Status get configStatus => _configStatus.value;
   final RxBool isFormValid = false.obs;
-
 
   /*
   * Login Form Fields
@@ -119,7 +120,6 @@ class AuthController extends GetxController {
 
   Status<LoginOutDto> get loginState => _rxLoginState.value;
 
-
   final Rx<Status> _rxCustomerRegisterState = Rx(const Status.idle());
 
   Status get registerState => _rxCustomerRegisterState.value;
@@ -136,7 +136,6 @@ class AuthController extends GetxController {
 
   RegisterType get registerType => _rxRegisterType.value;
 
-
   final Rx<Status> _rxUsernameVerify = Rx(const Status.idle());
 
   Status get usernameVerify => _rxUsernameVerify.value;
@@ -147,11 +146,11 @@ class AuthController extends GetxController {
   var timeLeft = 60.obs;
   var isResend = false.obs;
 
-
   void updateIsFirstTime(bool value) {
     isFirstTime.value = value;
-    storage.write('isFirstTime', value);  // Save to storage
+    storage.write('isFirstTime', value); // Save to storage
   }
+
   Future<void> verifyOtp() async {
     _rxcustomerOtpVerifyState.value = Status.loading();
     Map<String, dynamic> data = {
@@ -170,7 +169,6 @@ class AuthController extends GetxController {
       popupBottomSheet(
         bottomSheetBody: await Get.bottomSheet(
           SubmitBottomSheet(
-
             titleText: "Registration Completed",
             descriptionText: "You can view the details on the dashboard.",
             buttonText: "Login",
@@ -196,8 +194,8 @@ class AuthController extends GetxController {
     }
   }
 
-  Future<void> resendOtpForVerify() async{
-    _rxcustomerOtpVerifyState.value=Status.loading();
+  Future<void> resendOtpForVerify() async {
+    _rxcustomerOtpVerifyState.value = Status.loading();
     Map<String, dynamic> data = {
       "phone": customerPhoneNumberController.value.text,
     };
@@ -205,7 +203,6 @@ class AuthController extends GetxController {
     if (!response.error) {
       isResend.value = true;
       SnackBars.success("Success!", response.message);
-
     } else {
       SnackBars.failure("Oops!", response.message);
     }
@@ -215,7 +212,7 @@ class AuthController extends GetxController {
     isFormValid.value = customerFormKey.currentState?.validate() ?? false;
   }
 
-  void verifyInsuree() async{
+  void verifyInsuree() async {
     _rxCustomerRegisterState.value = Status.loading();
     Map<String, dynamic> data = {
       "chfid": customerChfidController.value.text,
@@ -237,7 +234,7 @@ class AuthController extends GetxController {
     }
   }
 
-  Future<void> verifyUsername (data) async {
+  Future<void> verifyUsername(data) async {
     _rxUsernameVerify.value = Status.loading();
     Map<String, dynamic> data = {
       "username": customerUsernameController.value.text,
@@ -267,12 +264,14 @@ class AuthController extends GetxController {
       }
     });
   }
-  void resendOtp() async{
+
+  void resendOtp() async {
     startTimer();
     isResend.value = true;
     //await verifyOtp();
     resendOtpForVerify();
   }
+
   //
   @override
   void onInit() {
@@ -280,7 +279,6 @@ class AuthController extends GetxController {
     _getCurrentUser();
     isFirstTime.value = storage.read('isFirstTime') ?? true;
     isBiometricEnabled.value = storage.read('biometricEnabled') ?? false;
-
   }
 
   @override
@@ -317,9 +315,8 @@ class AuthController extends GetxController {
     customerOTPController.clear(); // Assuming OTP can be cleared
     _rxcustomerOtpVerifyState.value = Status.idle();
     _rxCustomerRegisterState.value = Status.idle();
-     isVerified.value = false;
-     canResend.value = false;
-
+    isVerified.value = false;
+    canResend.value = false;
   }
 
   void _getCurrentUser() async {
@@ -359,51 +356,72 @@ class AuthController extends GetxController {
   }
 
   bool isInsuree() {
-    return currentUser?.isInsuree==true;
+    return currentUser?.isInsuree == true;
   }
 
   InsureeInfo? insureeInfo() {
     return currentUser?.insureeInfo;
   }
 
-
   bool isOfficer() {
-    return currentUser?.isOfficer==true;
+    return currentUser?.isOfficer == true;
   }
 
   void logout() async {
     final result = await _authRepository.removeStorage(key: 'user');
-    AuthController.to.currentUser!.token = null;
-    AuthController.to.currentUser!.refresh = null;
+
+    // Clear authentication data from DioClient
+    final dioClient = getIt.get<DioClient>();
+    dioClient.clearAuthData();
+
+    // Reset current user data
+    if (AuthController.to.currentUser != null) {
+      AuthController.to.currentUser!.token = null;
+      AuthController.to.currentUser!.refresh = null;
+      AuthController.to.currentUser!.csrfToken = null;
+    }
+
     result.whenOrNull(success: (data) => Get.offAllNamed(Routes.LOGIN));
   }
 
   Future<void> _login() async {
-    _rxLoginState.value = await _authRepository.login(
-      dto: LoginInDto(
-        username: loginEmailController.text,
-        password: loginPasswordController.text,
-      ),
+    // Use new GraphQL authentication
+    final result = await _authRepository.graphqlLogin(
+      username: loginEmailController.text,
+      password: loginPasswordController.text,
     );
-    loginState.whenOrNull(
-      success: (data) {
-        _saveUserInStorage(
-          id: data?.username ?? "",
-          email: data!.email!,
-          name: "${data.firstName} ${data.lastName}",
-          token: data?.access ?? "",
-          role: data.exp.toString() ,
-          is_insuree: data?.isInsuree ?? false,
-          is_officer: data?.isOfficer ?? false,
-          refresh: data?.refresh ?? "",
-          insureeInfo: data?.insureeInfo, // Add insureeInfo here
+
+    result.whenOrNull(
+      success: (authData) async {
+        // After successful authentication, get current user details
+        final userResult = await _authRepository.getCurrentUser();
+        userResult.whenOrNull(
+          success: (userData) {
+            _saveUserInStorage(
+              id: userData?.id ?? "",
+              email: userData?.username ?? "", // Use username as email for now
+              name: userData?.iUser != null
+                  ? "${userData!.iUser!.otherNames} ${userData.iUser!.lastName}"
+                  : userData?.username ?? "",
+              token: authData?.tokenAuth.token ?? "",
+              role: "officer", // Default role for now
+              is_insuree: false, // Officers are not insurees
+              is_officer: true, // All users logging in are officers
+              refresh: authData?.tokenAuth.refreshExpiresIn.toString() ?? "",
+              username: userData?.username ?? "",
+              csrfToken: authData?.getCsrfToken.csrfToken ?? "",
+              officerInfo: userData?.iUser,
+            );
+            storage.write('loginUsername', loginEmailController.text);
+            storage.write('loginPassword', loginPasswordController.text);
+            _getCurrentUser();
+            Get.offAllNamed(Routes.ROOT);
+            _clearTextControllers();
+          },
+          failure: (error) {
+            showSnackBarOnFailure(error);
+          },
         );
-        storage.write('loginUsername', loginEmailController.text);
-        storage.write('loginPassword',
-            loginPasswordController.text); // Consider encryption here
-        _getCurrentUser();
-        Get.offAllNamed(Routes.ROOT);
-        _clearTextControllers();
       },
       failure: showSnackBarOnFailure,
     );
@@ -483,27 +501,40 @@ class AuthController extends GetxController {
 
   Future<void> _loginWithSavedCredentials(
       String username, String password) async {
-    _rxLoginState.value = await _authRepository.login(
-      dto: LoginInDto(
-        username: username,
-        password: password,
-      ),
+    // Use new GraphQL authentication for biometric login too
+    final result = await _authRepository.graphqlLogin(
+      username: username,
+      password: password,
     );
-    loginState.whenOrNull(
-      success: (data) {
-        _saveUserInStorage(
-          id: data?.username ?? "",
-          email: data!.email!,
-          name: "${data.firstName} ${data.lastName}",
-          token: data?.access ?? "",
-          role: data?.userType ?? '',
-          is_insuree: data?.isInsuree ?? false,
-          is_officer: data?.isOfficer ?? false,
-          refresh: data?.refresh ?? "",
-          insureeInfo: data?.insureeInfo, // Add insureeInfo here
+
+    result.whenOrNull(
+      success: (authData) async {
+        // After successful authentication, get current user details
+        final userResult = await _authRepository.getCurrentUser();
+        userResult.whenOrNull(
+          success: (userData) {
+            _saveUserInStorage(
+              id: userData?.id ?? "",
+              email: userData?.username ?? "",
+              name: userData?.iUser != null
+                  ? "${userData!.iUser!.otherNames} ${userData.iUser!.lastName}"
+                  : userData?.username ?? "",
+              token: authData?.tokenAuth.token ?? "",
+              role: "officer",
+              is_insuree: false,
+              is_officer: true,
+              refresh: authData?.tokenAuth.refreshExpiresIn.toString() ?? "",
+              username: userData?.username ?? "",
+              csrfToken: authData?.getCsrfToken.csrfToken ?? "",
+              officerInfo: userData?.iUser,
+            );
+            _getCurrentUser();
+            Get.offAllNamed(Routes.ROOT);
+          },
+          failure: (error) {
+            showSnackBarOnFailure(error);
+          },
         );
-        _getCurrentUser();
-        Get.offAllNamed(Routes.ROOT);
       },
       failure: showSnackBarOnFailure,
     );
@@ -516,11 +547,14 @@ class AuthController extends GetxController {
     required String token,
     String? phone,
     String? status,
-    required String role,
-    required bool is_insuree,
-    required bool is_officer,
-    required String refresh,
+    String? role,
+    bool? is_insuree,
+    bool? is_officer,
+    String? refresh,
     InsureeInfo? insureeInfo, // Add insureeInfo as an optional parameter
+    String? username,
+    String? csrfToken,
+    UserInfo? officerInfo,
   }) {
     final user = UserEntity(
       id: id,
@@ -533,12 +567,16 @@ class AuthController extends GetxController {
       isOfficer: is_officer,
       insureeInfo: insureeInfo,
       phoneNumber: phone,
-      status: status, // Pass insureeInfo
+      status: status,
+      username: username,
+      csrfToken: csrfToken,
+      officerInfo: officerInfo != null
+          ? OfficerInfo.fromJson(officerInfo.toJson())
+          : null,
     );
 
     storage.write('user', user.toMap());
   }
-
 
   void _saveConfigInStorage(
       {String? domainName,
@@ -556,8 +594,10 @@ class AuthController extends GetxController {
   }
 
   bool validatePasswords() {
-    return customerPasswordController.text == customerConfirmPasswordController.text;
+    return customerPasswordController.text ==
+        customerConfirmPasswordController.text;
   }
+
   String? confirmPasswordValidator(String? value) {
     if (value == null || value.isEmpty) {
       return 'Please confirm your password';

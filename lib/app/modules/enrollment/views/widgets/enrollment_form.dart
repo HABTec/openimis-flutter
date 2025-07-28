@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:heroicons/heroicons.dart';
 import 'package:openimis_app/app/modules/enrollment/controller/LocationDto.dart';
 import '../../controller/enrollment_controller.dart';
+import '../../controller/enhanced_enrollment_controller.dart';
 import 'offline_payment_view.dart';
 
 class EnrollmentForm extends StatelessWidget {
@@ -45,6 +46,14 @@ class EnrollmentForm extends StatelessWidget {
                       )
                     : Icon(Icons.sync, color: Colors.white),
                 tooltip: 'Sync Rates',
+              )),
+          // Test GraphQL button for debugging
+          Obx(() => IconButton(
+                onPressed: controller.isLoading.value
+                    ? null
+                    : () => controller.testGraphQLConnection(),
+                icon: Icon(Icons.bug_report, color: Colors.white),
+                tooltip: 'Test GraphQL',
               )),
           SizedBox(width: 8),
         ],
@@ -202,19 +211,10 @@ class EnrollmentForm extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: buildTextFormField(
+              child: buildReadOnlyTextFormField(
                 controller.chfidController,
-                'CHFID *',
-                TextInputType.number,
-                (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'CHFID is required';
-                  }
-                  if (value.length != 10) {
-                    return 'CHFID must be exactly 10 digits';
-                  }
-                  return null;
-                },
+                'CHFID (Auto-generated) *',
+                Icons.badge,
               ),
             ),
             SizedBox(width: 16),
@@ -1018,53 +1018,83 @@ class EnrollmentForm extends StatelessWidget {
         SizedBox(height: 20),
 
         // Summary Cards
-        Card(
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Personal Information',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        Obx(() => Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Personal Information',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    Divider(),
+                    _buildReviewRow('Name',
+                        '${controller.givenNameController.text} ${controller.lastNameController.text}'),
+                    _buildReviewRow('CHFID', controller.chfidController.text),
+                    _buildReviewRow('Gender', controller.gender.value),
+                    _buildReviewRow('Phone', controller.phoneController.text),
+                    _buildReviewRow('Email', controller.emailController.text),
+                    _buildReviewRow(
+                        'Birth Date', controller.birthdateController.text),
+                    _buildReviewRow(
+                        'Marital Status', controller.maritalStatus.value),
+                    _buildReviewRow(
+                        'Disability Status', controller.disabilityStatus.value),
+                  ],
                 ),
-                Divider(),
-                _buildReviewRow('Name',
-                    '${controller.givenNameController.text} ${controller.lastNameController.text}'),
-                _buildReviewRow('CHFID', controller.chfidController.text),
-                _buildReviewRow('Gender', controller.gender.value),
-                _buildReviewRow('Phone', controller.phoneController.text),
-                _buildReviewRow(
-                    'Disability Status', controller.disabilityStatus.value),
-              ],
-            ),
-          ),
-        ),
+              ),
+            )),
 
-        Card(
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Location',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        Obx(() => Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Location & Membership',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    Divider(),
+                    _buildReviewRow(
+                        'Region',
+                        controller.selectedRegion.value?.name ??
+                            'Not selected'),
+                    _buildReviewRow(
+                        'District',
+                        controller.selectedDistrict.value?.name ??
+                            'Not selected'),
+                    _buildReviewRow(
+                        'Municipality',
+                        controller.selectedMunicipality.value?.name ??
+                            'Not selected'),
+                    _buildReviewRow(
+                        'Village',
+                        controller.selectedVillage.value?.name ??
+                            'Not selected'),
+                    SizedBox(height: 8),
+                    _buildReviewRow(
+                        'Membership Type',
+                        controller.membershipType.value.isEmpty
+                            ? 'Not selected'
+                            : controller.membershipType.value),
+                    _buildReviewRow(
+                        'Membership Level',
+                        controller.membershipLevel.value.isEmpty
+                            ? 'Not selected'
+                            : controller.membershipLevel.value),
+                    _buildReviewRow(
+                        'Area Type',
+                        controller.areaType.value.isEmpty
+                            ? 'Not selected'
+                            : controller.areaType.value),
+                  ],
                 ),
-                Divider(),
-                _buildReviewRow('Region',
-                    controller.selectedRegion.value?.name ?? 'Not selected'),
-                _buildReviewRow('District',
-                    controller.selectedDistrict.value?.name ?? 'Not selected'),
-                _buildReviewRow(
-                    'Membership Type', controller.membershipType.value),
-                _buildReviewRow(
-                    'Membership Level', controller.membershipLevel.value),
-                _buildReviewRow('Area Type', controller.areaType.value),
-              ],
-            ),
-          ),
-        ),
+              ),
+            )),
 
         // Family Members Summary
         Obx(() => controller.familyMembers.isNotEmpty
@@ -1119,72 +1149,87 @@ class EnrollmentForm extends StatelessWidget {
               )
             : SizedBox.shrink()),
 
-        Card(
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Contribution Summary',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                Divider(),
-                _buildReviewRow(
-                    'Membership Type', controller.membershipType.value),
-                _buildReviewRow(
-                    'Membership Level', controller.membershipLevel.value),
-                _buildReviewRow('Area Type', controller.areaType.value),
-                Obx(() => _buildReviewRow(
-                    'Total Members', '${controller.familyMembers.length}')),
+        Obx(() => Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Contribution Summary',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    Divider(),
+                    _buildReviewRow(
+                        'Membership Type',
+                        controller.membershipType.value.isEmpty
+                            ? 'Not selected'
+                            : controller.membershipType.value),
+                    _buildReviewRow(
+                        'Membership Level',
+                        controller.membershipLevel.value.isEmpty
+                            ? 'Not selected'
+                            : controller.membershipLevel.value),
+                    _buildReviewRow(
+                        'Area Type',
+                        controller.areaType.value.isEmpty
+                            ? 'Not selected'
+                            : controller.areaType.value),
+                    _buildReviewRow(
+                        'Total Members',
+                        controller.familyMembers.isEmpty
+                            ? '1 (Head only)'
+                            : '${controller.familyMembers.length}'),
 
-                // Payment Method Information
-                Obx(() => _buildReviewRow(
-                    'Payment Method',
-                    controller.isOfflinePayment.value
-                        ? 'Offline Payment'
-                        : 'Online Payment')),
-                Obx(() => controller.isOfflinePayment.value &&
-                        controller.transactionId.value.isNotEmpty
-                    ? _buildReviewRow(
-                        'Transaction ID', controller.transactionId.value)
-                    : Container()),
+                    // Payment Method Information
+                    _buildReviewRow(
+                        'Payment Method',
+                        controller.isOfflinePayment.value
+                            ? 'Offline Payment'
+                            : 'Online Payment'),
+                    controller.isOfflinePayment.value &&
+                            controller.transactionId.value.isNotEmpty
+                        ? _buildReviewRow(
+                            'Transaction ID', controller.transactionId.value)
+                        : Container(),
 
-                Divider(),
-                Obx(() => controller.isCalculatingContribution.value
-                    ? Padding(
-                        padding: EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                    Divider(),
+                    controller.isCalculatingContribution.value
+                        ? Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                                SizedBox(width: 8),
+                                Text('Calculating contribution...'),
+                              ],
                             ),
-                            SizedBox(width: 8),
-                            Text('Calculating contribution...'),
-                          ],
-                        ),
-                      )
-                    : FutureBuilder<double>(
-                        future: controller.calculateTotalContribution(),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return _buildReviewRow(
-                                'Total Contribution', 'Calculating...',
-                                isTotal: true);
-                          }
-                          final contribution = snapshot.data ?? 0.0;
-                          return _buildReviewRow('Total Contribution',
-                              '${contribution.toStringAsFixed(2)} ETB',
-                              isTotal: true);
-                        },
-                      )),
-              ],
-            ),
-          ),
-        ),
+                          )
+                        : FutureBuilder<double>(
+                            future: controller.calculateTotalContribution(),
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return _buildReviewRow(
+                                    'Total Contribution', 'Calculating...',
+                                    isTotal: true);
+                              }
+                              final contribution = snapshot.data ?? 0.0;
+                              return _buildReviewRow('Total Contribution',
+                                  '${contribution.toStringAsFixed(2)} ETB',
+                                  isTotal: true);
+                            },
+                          ),
+                  ],
+                ),
+              ),
+            )),
       ],
     );
   }
@@ -1258,14 +1303,10 @@ class EnrollmentForm extends StatelessWidget {
                           children: [
                             ElevatedButton(
                               onPressed: () {
-                                // Show offline payment dialog
-                                Get.bottomSheet(
-                                  Container(
-                                    height: Get.height * 0.8,
-                                    child: OfflinePaymentView(),
-                                  ),
-                                  isScrollControlled: true,
-                                );
+                                // Use the enhanced controller's dialog method
+                                final enhancedController =
+                                    Get.find<EnhancedEnrollmentController>();
+                                enhancedController.showTransactionIdDialog();
                               },
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -1401,6 +1442,35 @@ class EnrollmentForm extends StatelessWidget {
       validator: validator,
       maxLines: keyboardType == TextInputType.multiline ? 3 : 1,
       style: TextStyle(color: Colors.black87),
+    );
+  }
+
+  Widget buildReadOnlyTextFormField(
+    TextEditingController textController,
+    String labelText,
+    IconData icon,
+  ) {
+    return TextFormField(
+      controller: textController,
+      readOnly: true,
+      decoration: InputDecoration(
+        labelText: labelText,
+        labelStyle: TextStyle(color: Color(0xFF036273)),
+        border: OutlineInputBorder(),
+        prefixIcon: Icon(icon, color: Color(0xFF036273)),
+        fillColor: Colors.grey.shade50,
+        filled: true,
+        focusedBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: Color(0xFF036273), width: 2),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: Colors.grey.shade400),
+        ),
+      ),
+      style: TextStyle(
+        color: Colors.black87,
+        fontWeight: FontWeight.w600,
+      ),
     );
   }
 

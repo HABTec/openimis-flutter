@@ -12,10 +12,13 @@ import '../modules/auth/views/register/register_view.dart';
 
 import '../modules/Insuree/bindings/customer_profile_binding.dart';
 import '../modules/enrollment/bindings/enrollment_binding.dart';
+import '../modules/enrollment/bindings/enhanced_enrollment_binding.dart';
 import '../modules/home/bindings/home_binding.dart';
 import '../modules/home/views/home_view.dart';
 import '../modules/enrollment/views/enrollment_view.dart';
 import '../modules/enrollment/views/enrollment_list_view.dart';
+import '../modules/enrollment/views/enhanced_enrollment_view.dart';
+import '../modules/enrollment/views/sync_status_view.dart';
 import '../modules/public_enrollment/views/public_enrollment_view.dart';
 import '../modules/root/bindings/root_binding.dart';
 import '../modules/root/views/root_view.dart';
@@ -25,6 +28,8 @@ import '../modules/search/views/search_view.dart';
 import '../modules/waiting/bindings/waiting_binding.dart';
 import '../modules/waiting/views/waiting_view.dart';
 import '../modules/auth/views/register/widgets/otp_view.dart';
+import '../modules/settings/bindings/settings_binding.dart';
+import '../modules/settings/views/settings_view.dart';
 
 part 'app_routes.dart';
 
@@ -85,6 +90,16 @@ class AppPages {
       binding: EnrollmentBindings(),
     ),
     GetPage(
+      name: _Paths.ENHANCED_ENROLLMENT,
+      page: () => const EnhancedEnrollmentView(),
+      binding: EnhancedEnrollmentBinding(),
+    ),
+    GetPage(
+      name: _Paths.SYNC_STATUS,
+      page: () => const SyncStatusView(),
+      binding: EnhancedEnrollmentBinding(),
+    ),
+    GetPage(
       name: _Paths.PARTNERS,
       page: () => PartnersPage(),
     ),
@@ -100,6 +115,11 @@ class AppPages {
       name: _Paths.PROFILE,
       page: () => ProfileView(),
       binding: CustomerProfileBinding(),
+    ),
+    GetPage(
+      name: _Paths.SETTINGS,
+      page: () => const SettingsView(),
+      binding: SettingsBinding(),
     ),
   ];
 }

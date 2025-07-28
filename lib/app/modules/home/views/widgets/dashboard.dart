@@ -22,11 +22,9 @@ class DashboardScreen extends StatelessWidget {
           mainAxisSpacing: 16.0,
           childAspectRatio: 1,
         ),
-        delegate:
-        SliverChildBuilderDelegate(
+        delegate: SliverChildBuilderDelegate(
           (context, index) {
-            return
-              DashboardCard(item: items[index]);
+            return DashboardCard(item: items[index]);
           },
           childCount: items.length,
         ),
@@ -56,7 +54,13 @@ class DashboardCard extends StatelessWidget {
       elevation: 4.0,
       child: InkWell(
         onTap: () {
-          Get.to(() => HelpScreen());
+          if (item.name == 'Enrollment') {
+            Get.toNamed('/enhanced-enrollment');
+          } else if (item.name == 'Inquire') {
+            Get.toNamed('/search');
+          } else {
+            Get.to(() => HelpScreen());
+          }
         },
         child: Padding(
           padding: const EdgeInsets.all(16.0),

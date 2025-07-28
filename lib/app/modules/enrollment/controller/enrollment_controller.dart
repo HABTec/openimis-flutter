@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
@@ -13,6 +12,13 @@ import 'package:openimis_app/app/modules/enrollment/controller/LocationDto.dart'
 import 'package:openimis_app/app/modules/enrollment/controller/MembershipDto.dart';
 import 'package:openimis_app/app/data/remote/services/payment/arifpay_service.dart';
 import 'package:openimis_app/app/data/local/services/contribution_config_service.dart';
+import 'package:path/path.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:logger/logger.dart';
 
 import '../../../data/remote/base/status.dart';
 import '../../../di/locator.dart';
@@ -22,8 +28,10 @@ import '../views/widgets/qr_view.dart';
 import '../views/widgets/payment_view.dart';
 import '../views/widgets/receipt_view.dart';
 import '../views/widgets/qr_card_view.dart';
+import '../views/widgets/offline_payment_invoice_view.dart';
 import 'EnrollmentDto.dart';
 import 'HospitalDto.dart';
+import '../../auth/controllers/auth_controller.dart';
 
 // Family Member Model
 class FamilyMember {
@@ -100,7 +108,6 @@ class EnrollmentController extends GetxController
     with GetSingleTickerProviderStateMixin {
   final GlobalKey<FormState> enrollmentFormKey = GlobalKey<FormState>();
 
-  final _enrollmentRepository = getIt.get<EnrollmentRepository>();
   final _arifpayService = ArifPayService();
   final _contributionConfigService = ContributionConfigService();
 
@@ -223,10 +230,16 @@ class EnrollmentController extends GetxController
   var villages = <Village>[].obs;
   late TabController tabController;
 
+  final logger = Logger();
+
   @override
   void onInit() {
     super.onInit();
     tabController = TabController(length: 2, vsync: this);
+
+    // Auto-generate CHFID on initialization
+    _autoGenerateChfid();
+
     fetchEnrollments();
     fetchLocations();
     fetchHospitals();
@@ -242,6 +255,20 @@ class EnrollmentController extends GetxController
     ever(membershipLevel, (_) => _onMembershipDetailsChanged());
     ever(areaType, (_) => _onMembershipDetailsChanged());
     ever(familyMembers, (_) => _onMembershipDetailsChanged());
+  }
+
+  // Auto-generate CHFID
+  Future<void> _autoGenerateChfid() async {
+    try {
+      final dbHelper = DatabaseHelper();
+      final generatedChfid = await dbHelper.generateUniqueChfid();
+      chfidController.text = generatedChfid;
+    } catch (e) {
+      logger.e("Error generating CHFID", e);
+      // Fallback generation
+      final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+      chfidController.text = 'CHF${timestamp.substring(8)}';
+    }
   }
 
   Future<void> fetchEnrollmentDetails(int enrollmentId) async {
@@ -279,6 +306,14 @@ class EnrollmentController extends GetxController
         filteredEnrollments.map<int>((enrollment) => enrollment['id'] as int),
       );
     }
+    // Initialize configuration sync
+    _initializeConfigSync();
+
+    // Set up reactive listeners for membership details changes
+    ever(membershipType, (_) => _onMembershipDetailsChanged());
+    ever(membershipLevel, (_) => _onMembershipDetailsChanged());
+    ever(areaType, (_) => _onMembershipDetailsChanged());
+    ever(familyMembers, (_) => _onMembershipDetailsChanged());
   }
 
   Future<void> fetchEnrollments() async {
@@ -289,9 +324,9 @@ class EnrollmentController extends GetxController
   }
 
   Future<void> fetchLocations() async {
-    _rxLocationState.value = Status.loading();
+    _rxLocationState.value = const Status.loading();
     try {
-      await Future.delayed(Duration(seconds: 1));
+      await Future.delayed(const Duration(seconds: 1));
       // Mock location data - you can replace with actual API call
       final mockLocations = [
         LocationDto(
@@ -334,9 +369,9 @@ class EnrollmentController extends GetxController
   }
 
   Future<void> fetchHospitals() async {
-    _rxHospitalState.value = Status.loading();
+    _rxHospitalState.value = const Status.loading();
     try {
-      await Future.delayed(Duration(seconds: 1));
+      await Future.delayed(const Duration(seconds: 1));
       // Mock hospital data
       final mockHospitals = [
         HealthServiceProvider(
@@ -351,7 +386,6 @@ class EnrollmentController extends GetxController
   }
 
   Future<void> updateEnrollment(enrollment) async {
-    final dbHelper = DatabaseHelper();
     // Implementation for updating enrollment
     // TODO: Add update logic with disability status
   }
@@ -360,7 +394,6 @@ class EnrollmentController extends GetxController
   Future<void> onEnrollmentSubmitOffline() async {
     if (!_validateForm()) return;
 
-    final db = await DatabaseHelper().database;
     String? photoBase64;
     if (photo.value != null) {
       photoBase64 = await _encodePhotoToBase64(photo.value!);
@@ -411,13 +444,35 @@ class EnrollmentController extends GetxController
     try {
       isLoading(true);
 
-      // First save the enrollment data
-      await onEnrollmentSubmitOffline();
+      // Check connectivity first
+      await _checkConnectivity();
 
-      // Then proceed to payment
-      await _initiatePayment();
+      if (isOnline.value) {
+        // 🚀 CREATE FAMILY USING GRAPHQL API
+        await createFamilyOnline();
+
+        // If family creation is successful, proceed to payment
+        await _initiatePayment();
+      } else {
+        // If offline, save locally and inform user
+        await onEnrollmentSubmitOffline();
+        SnackBars.warning(
+            "Offline Mode", "Family saved locally. Will sync when online.");
+        return; // Don't proceed to payment if offline
+      }
     } catch (e) {
+      logger.e("Error in online enrollment", e);
       SnackBars.failure("Error", "Failed to process enrollment: $e");
+
+      // Fallback: save locally if online submission fails
+      try {
+        await onEnrollmentSubmitOffline();
+        SnackBars.warning("Fallback",
+            "Saved locally due to connection issues. Will sync later.");
+      } catch (fallbackError) {
+        SnackBars.failure(
+            "Critical Error", "Failed to save enrollment data: $fallbackError");
+      }
     } finally {
       isLoading(false);
     }
@@ -429,7 +484,7 @@ class EnrollmentController extends GetxController
       // Show processing dialog
       Get.dialog(
         AlertDialog(
-          title: Row(
+          title: const Row(
             children: [
               CircularProgressIndicator(
                 strokeWidth: 2,
@@ -449,14 +504,14 @@ class EnrollmentController extends GetxController
                   if (snapshot.hasData) {
                     return Text('Amount: ${snapshot.data} ETB');
                   } else {
-                    return Text('Amount: Calculating... ETB');
+                    return const Text('Amount: Calculating... ETB');
                   }
                 },
               ),
-              Text('Currency: ETB'),
-              Text('Description: CBHI Membership Payment'),
-              SizedBox(height: 16),
-              Text('Initiating ArifPay payment gateway...'),
+              const Text('Currency: ETB'),
+              const Text('Description: CBHI Membership Payment'),
+              const SizedBox(height: 16),
+              const Text('Initiating ArifPay payment gateway...'),
             ],
           ),
         ),
@@ -464,9 +519,8 @@ class EnrollmentController extends GetxController
       );
 
       // Simulate payment processing
-      await Future.delayed(Duration(seconds: 2));
+      await Future.delayed(const Duration(seconds: 2));
 
-      final contributionAmount = await calculateTotalContribution();
       final response = await _arifpayService.initiatePayment(
         amount: await calculateTotalContribution(),
         currency: 'ETB',
@@ -529,7 +583,7 @@ class EnrollmentController extends GetxController
   void _showQRCard() {
     // Show loading dialog while generating QR card
     Get.dialog(
-      AlertDialog(
+      const AlertDialog(
         title: Row(
           children: [
             CircularProgressIndicator(
@@ -546,7 +600,7 @@ class EnrollmentController extends GetxController
     );
 
     // Simulate QR generation delay
-    Future.delayed(Duration(seconds: 2), () {
+    Future.delayed(const Duration(seconds: 2), () {
       Get.back(); // Close loading dialog
 
       // Navigate to QR card view
@@ -566,7 +620,7 @@ class EnrollmentController extends GetxController
 
       for (int id in enrollmentIds) {
         // Mock sync - simulate API call
-        await Future.delayed(Duration(seconds: 1));
+        await Future.delayed(const Duration(seconds: 1));
 
         // Update sync status in database
         // TODO: Implement actual sync logic
@@ -606,6 +660,9 @@ class EnrollmentController extends GetxController
         SnackBars.success("Auto-Generated", "CBHI ID generated: $chfid");
       }
 
+      // Calculate contribution before preparing family data
+      final contribution = await calculateTotalContribution();
+
       // Prepare family data with all form fields
       Map<String, dynamic> familyData = {
         'chfid': chfid,
@@ -614,6 +671,10 @@ class EnrollmentController extends GetxController
         'confirmationNumber': confirmationNumber.text,
         'addressDetail': addressDetail.text,
         'povertyStatus': povertyStatus.value,
+        'membershipType': membershipType.value,
+        'membershipLevel': membershipLevel.value,
+        'areaType': areaType.value,
+        'calculatedContribution': contribution,
 
         // Location data
         'regionId': selectedRegion.value?.id,
@@ -626,14 +687,24 @@ class EnrollmentController extends GetxController
         'villageName': selectedVillage.value?.name ?? '',
       };
 
-      // Prepare photo base64
-      String photoBase64 = '';
-      if (photo.value != null) {
-        photoBase64 = await _encodePhotoToBase64(photo.value!);
-      }
+      // Prepare head member data
+      Map<String, dynamic> headMemberData = {
+        'chfid': chfid,
+        'givenName': givenNameController.text,
+        'lastName': lastNameController.text,
+        'gender': gender.value,
+        'phone': phoneController.text,
+        'email': emailController.text,
+        'birthdate': birthdateController.text,
+        'maritalStatus': maritalStatus.value,
+        'disabilityStatus': disabilityStatus.value,
+        'identificationNo': identificationNoController.text,
+        'photo':
+            photo.value != null ? await _encodePhotoToBase64(photo.value!) : '',
+      };
 
-      // Calculate contribution before saving
-      final contribution = await calculateTotalContribution();
+      // Get photo base64 from head member data
+      final photoBase64 = headMemberData['photo'];
 
       if (newEnrollment.value && isHead.value) {
         // Insert new family with head member using existing method
@@ -682,12 +753,12 @@ class EnrollmentController extends GetxController
         // Insert as family member to existing family
         final existingFamilyId = familyId.value;
 
-        // Get existing family data
-        final existingFamilyData =
-            await dbHelper.getFamilyById(existingFamilyId);
-        final familyChfid = existingFamilyData?['chfid'] ?? '';
+        // Get existing family UUID
+        final familyData = await dbHelper.getFamilyById(existingFamilyId);
+        final familyUuid =
+            familyData?['uuid'] ?? DatabaseHelper.generateMemberUUID();
 
-        final memberDetails = {
+        final memberData = {
           'chfid': chfid,
           'firstName': givenNameController.text,
           'lastName': lastNameController.text,
@@ -699,22 +770,23 @@ class EnrollmentController extends GetxController
           'relationship': relationShip.value,
           'disabilityStatus': disabilityStatus.value,
           'identificationNo': identificationNoController.text,
+          'photo': photo.value != null
+              ? await _encodePhotoToBase64(photo.value!)
+              : '',
         };
-
         await dbHelper.insertFamilyMember(
-          familyChfid,
-          '${givenNameController.text} ${lastNameController.text}',
-          memberDetails,
-          photoBase64,
-          existingFamilyId,
-        );
+            familyUuid,
+            '${givenNameController.text} ${lastNameController.text}',
+            memberData,
+            photo.value != null ? photo.value!.path : '',
+            existingFamilyId);
 
         // Update family contribution after adding member
         await dbHelper.updateFamilyContribution(existingFamilyId, contribution);
         return existingFamilyId;
       }
     } catch (e) {
-      print('Error saving to local database: $e');
+      logger.e("Error saving to local database", e);
       SnackBars.failure("Save Error", "Failed to save enrollment data: $e");
       rethrow;
     }
@@ -745,16 +817,17 @@ class EnrollmentController extends GetxController
 
       // Remove from local database
       final db = await DatabaseHelper().database;
-      await db.delete('families', where: 'id = ?', whereArgs: [enrollmentId]);
+      await db.delete('family', where: 'id = ?', whereArgs: [enrollmentId]);
       await db
           .delete('members', where: 'family_id = ?', whereArgs: [enrollmentId]);
 
       // Refresh the enrollments list
       fetchEnrollments();
 
-      SnackBars.success("Success", "Enrollment deleted successfully!");
+      showSnackBar("Success", "Enrollment deleted successfully!");
     } catch (e) {
-      SnackBars.failure("Error", "Failed to delete enrollment: $e");
+      logger.e("Failed to delete enrollment", e);
+      showSnackBar("Error", "Failed to delete enrollment: $e", isError: true);
     } finally {
       isLoading(false);
     }
@@ -787,9 +860,11 @@ class EnrollmentController extends GetxController
       // Proceed to payment
       await _initiatePayment();
 
-      SnackBars.success("Success", "Online enrollment initiated!");
+      showSnackBar("Success", "Online enrollment initiated!");
     } catch (e) {
-      SnackBars.failure("Error", "Failed to process online enrollment: $e");
+      logger.e("Failed to process online enrollment", e);
+      showSnackBar("Error", "Failed to process online enrollment: $e",
+          isError: true);
     } finally {
       isLoading(false);
     }
@@ -797,16 +872,137 @@ class EnrollmentController extends GetxController
 
   Future<void> _processOnlineEnrollment(int familyId) async {
     // Mock online enrollment processing
-    await Future.delayed(Duration(seconds: 2));
+    await Future.delayed(const Duration(seconds: 2));
 
     // Update sync status to indicate online processing
     final db = await DatabaseHelper().database;
     await db.update(
-      'families',
+      'family',
       {'sync': 1},
       where: 'id = ?',
       whereArgs: [familyId],
     );
+  }
+
+  /// Create family online using GraphQL
+  Future<void> createFamilyOnline() async {
+    final repo = getIt.get<EnrollmentRepository>();
+
+    try {
+      logger.i("Starting GraphQL family creation...");
+
+      String? photoBase64;
+      if (photo.value != null) {
+        photoBase64 = await _encodePhotoToBase64(photo.value!);
+        logger.d("Photo encoded to base64");
+      }
+
+      // Prepare location ID
+      final locationId = selectedVillage.value?.id ??
+          selectedMunicipality.value?.id ??
+          selectedDistrict.value?.id ??
+          selectedRegion.value?.id;
+
+      logger.i(
+          "Calling GraphQL createFamily with CHFID: ${chfidController.text}");
+
+      final result = await repo.createFamilyFromForm(
+        chfId: chfidController.text,
+        lastName: lastNameController.text,
+        otherNames: givenNameController.text,
+        gender: gender.value,
+        dob: birthdateController.text,
+        phone: phoneController.text,
+        email: emailController.text,
+        identificationNo: identificationNoController.text,
+        maritalStatus: maritalStatus.value,
+        photoBase64: photoBase64,
+        locationId: locationId,
+        poverty: povertyStatus.value,
+        familyTypeId: selectedFamilyType.value.isNotEmpty
+            ? selectedFamilyType.value
+            : 'H',
+        address: addressDetail.text,
+        confirmationTypeId: selectedConfirmationType.value.isNotEmpty
+            ? selectedConfirmationType.value
+            : 'C',
+        confirmationNo: confirmationNumber.text,
+      );
+
+      if (!result.error) {
+        logger.i("GraphQL family creation successful");
+        SnackBars.success('Success',
+            result.message ?? 'Family created successfully in backend!');
+
+        // Don't reset form here since we'll proceed to payment
+        // resetForm();
+        // fetchEnrollments();
+      } else {
+        logger.e("GraphQL family creation failed: ${result.message}");
+        throw Exception(result.message ?? 'Failed to create family in backend');
+      }
+    } catch (e) {
+      logger.e("Error in createFamilyOnline: $e");
+      // Re-throw the error so the calling method can handle it
+      throw Exception('Failed to create family online: $e');
+    }
+  }
+
+  /// Store family locally if offline, and sync when online
+  Future<void> createFamilyWithOfflineSupport() async {
+    await _checkConnectivity();
+    if (isOnline.value) {
+      await createFamilyOnline();
+    } else {
+      // Store locally for later sync
+      final dbHelper = DatabaseHelper();
+      final localFamily = {
+        'chfid': chfidController.text,
+        'lastName': lastNameController.text,
+        'givenName': givenNameController.text,
+        'gender': gender.value,
+        'birthdate': birthdateController.text,
+        'phone': phoneController.text,
+        'email': emailController.text,
+        'identificationNo': identificationNoController.text,
+        'maritalStatus': maritalStatus.value,
+        'isHead': true,
+        'photoPath': photo.value?.path,
+        'familyType': selectedFamilyType.value,
+        'confirmationType': selectedConfirmationType.value,
+        'confirmationNumber': confirmationNumber.text,
+        'addressDetail': addressDetail.text,
+        'povertyStatus': povertyStatus.value,
+        'locationId': selectedVillage.value?.id ??
+            selectedMunicipality.value?.id ??
+            selectedDistrict.value?.id ??
+            selectedRegion.value?.id,
+        'syncStatus': 0,
+      };
+      await dbHelper.insertCompleteFamilyWithHead(
+          localFamily, localFamily, photo.value?.path ?? '');
+      SnackBars.success(
+          'Offline', 'Family saved locally and will sync when online.');
+    }
+  }
+
+  /// Sync pending families when device comes online
+  Future<void> syncPendingFamilies() async {
+    try {
+      isLoading.value = true;
+      final repo = getIt.get<EnrollmentRepository>();
+      await repo.syncPendingFamilies();
+
+      // Refresh enrollments list after sync
+      await fetchEnrollments();
+
+      SnackBars.success(
+          'Sync', 'Pending families have been synced successfully.');
+    } catch (e) {
+      SnackBars.failure('Sync Error', 'Failed to sync pending families: $e');
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   // Step navigation for new form
@@ -1032,7 +1228,19 @@ class EnrollmentController extends GetxController
   void showSnackBarOnFailure(String? err) {
     Get.closeAllSnackbars();
     SnackBars.failure("Oops!", err.toString());
-    _rxEnrollmentState.value = Status.idle();
+    _rxEnrollmentState.value = const Status.idle();
+  }
+
+  void showSnackBar(String title, String message, {bool isError = false}) {
+    Get.snackbar(
+      title,
+      message,
+      backgroundColor:
+          isError ? const Color(0xFFFF5252) : const Color(0xFF4CAF50),
+      colorText: Colors.white,
+      duration: const Duration(seconds: 3),
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
 
   // Family Member Management Methods
@@ -1089,7 +1297,7 @@ class EnrollmentController extends GetxController
     Get.snackbar(
       'Success',
       'Family member added successfully',
-      backgroundColor: Color(0xFF036273),
+      backgroundColor: const Color(0xFF036273),
       colorText: Colors.white,
     );
   }
@@ -1112,7 +1320,7 @@ class EnrollmentController extends GetxController
           Get.snackbar(
             'Success',
             'Family member removed successfully',
-            backgroundColor: Color(0xFF036273),
+            backgroundColor: const Color(0xFF036273),
             colorText: Colors.white,
           );
         },
@@ -1134,7 +1342,7 @@ class EnrollmentController extends GetxController
       Get.snackbar(
         'Success',
         '${familyMembers[index].fullName} is now the family head',
-        backgroundColor: Color(0xFF036273),
+        backgroundColor: const Color(0xFF036273),
         colorText: Colors.white,
       );
     }
@@ -1165,11 +1373,6 @@ class EnrollmentController extends GetxController
       // Remove member from list (will be re-added when form is submitted)
       familyMembers.removeAt(index);
     }
-  }
-
-  String _generateChfid() {
-    // Generate a simple CHFID (in real app, this would be more sophisticated)
-    return 'CHF${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
   }
 
   void _clearFormForNextMember() {
@@ -1203,28 +1406,32 @@ class EnrollmentController extends GetxController
   var isCalculatingContribution = false.obs;
 
   Future<double> calculateTotalContribution() async {
-    if (familyMembers.isEmpty ||
-        membershipType.value.isEmpty ||
-        membershipLevel.value.isEmpty ||
-        areaType.value.isEmpty) {
-      return 0.0;
-    }
-
     try {
       isCalculatingContribution(true);
 
+      // Calculate number of members (including head if no family members added yet)
+      int memberCount = familyMembers.isEmpty ? 1 : familyMembers.length;
+
+      // Use default values if fields are empty
+      String effectiveMembershipType =
+          membershipType.value.isEmpty ? 'Paying' : membershipType.value;
+      String effectiveMembershipLevel =
+          membershipLevel.value.isEmpty ? 'Level 1' : membershipLevel.value;
+      String effectiveAreaType =
+          areaType.value.isEmpty ? 'Rural' : areaType.value;
+
       final contribution =
           await _contributionConfigService.calculateContribution(
-        membershipLevel: membershipLevel.value,
-        membershipType: membershipType.value,
-        areaType: areaType.value,
-        numberOfMembers: familyMembers.length,
+        membershipLevel: effectiveMembershipLevel,
+        membershipType: effectiveMembershipType,
+        areaType: effectiveAreaType,
+        numberOfMembers: memberCount,
       );
 
       calculatedContribution.value = contribution;
       return contribution;
     } catch (e) {
-      print('Error calculating contribution: $e');
+      logger.e("Error calculating contribution", e);
       // Fallback to default calculation
       return _getDefaultContribution();
     } finally {
@@ -1234,21 +1441,30 @@ class EnrollmentController extends GetxController
 
   // Default fallback calculation
   double _getDefaultContribution() {
-    if (familyMembers.isEmpty) return 0.0;
+    // Calculate number of members (minimum 1 for head)
+    int memberCount = familyMembers.isEmpty ? 1 : familyMembers.length;
 
-    double baseRate = 0.0;
-    switch (membershipLevel.value) {
+    // Use default values if fields are empty
+    String effectiveMembershipType =
+        membershipType.value.isEmpty ? 'Paying' : membershipType.value;
+    String effectiveMembershipLevel =
+        membershipLevel.value.isEmpty ? 'Level 1' : membershipLevel.value;
+
+    double baseRate = 150.0; // Default base rate
+    switch (effectiveMembershipLevel) {
       case 'Level 1':
-        baseRate = membershipType.value == 'Paying' ? 100.0 : 50.0;
+        baseRate = effectiveMembershipType == 'Paying' ? 100.0 : 50.0;
         break;
       case 'Level 2':
-        baseRate = membershipType.value == 'Paying' ? 150.0 : 75.0;
+        baseRate = effectiveMembershipType == 'Paying' ? 150.0 : 75.0;
         break;
       case 'Level 3':
-        baseRate = membershipType.value == 'Paying' ? 200.0 : 100.0;
+        baseRate = effectiveMembershipType == 'Paying' ? 200.0 : 100.0;
         break;
+      default:
+        baseRate = 150.0; // Default fallback
     }
-    return baseRate * familyMembers.length;
+    return baseRate * memberCount;
   }
 
   // Recalculate contribution when relevant fields change
@@ -1257,11 +1473,14 @@ class EnrollmentController extends GetxController
         membershipLevel.value.isNotEmpty &&
         areaType.value.isNotEmpty &&
         familyMembers.isNotEmpty) {
-      calculateTotalContribution();
+      // Calculate contribution asynchronously
+      calculateTotalContribution().then((value) {
+        // Update UI or handle the calculated value if needed
+        logger.i('Calculated contribution: $value');
+      });
     }
   }
 
-  // Initialize configuration sync on controller start
   Future<void> _initializeConfigSync() async {
     try {
       // Check if we need to sync configuration
@@ -1269,13 +1488,13 @@ class EnrollmentController extends GetxController
         final syncSuccess =
             await _contributionConfigService.syncConfigFromBackend();
         if (syncSuccess) {
-          print('Configuration synced successfully');
+          logger.i('Configuration synced successfully');
         } else {
-          print('Configuration sync failed - using local data');
+          logger.w('Configuration sync failed - using local data');
         }
       }
     } catch (e) {
-      print('Error initializing config sync: $e');
+      logger.e('Error initializing config sync', e);
     }
   }
 
@@ -1285,16 +1504,18 @@ class EnrollmentController extends GetxController
       isLoading(true);
       final success = await _contributionConfigService.syncConfigFromBackend();
       if (success) {
-        SnackBars.success("Success", "Configuration updated successfully!");
+        showSnackBar("Success", "Configuration updated successfully!");
         // Recalculate contribution with new config
         final newContribution = await calculateTotalContribution();
-        print('Updated contribution: $newContribution');
+        logger.i('Updated contribution: $newContribution');
       } else {
-        SnackBars.failure(
-            "Sync Failed", "Unable to update configuration. Using local data.");
+        showSnackBar(
+            "Sync Failed", "Unable to update configuration. Using local data.",
+            isError: true);
       }
     } catch (e) {
-      SnackBars.failure("Error", "Failed to sync configuration: $e");
+      logger.e("Failed to sync configuration", e);
+      showSnackBar("Error", "Failed to sync configuration: $e", isError: true);
     } finally {
       isLoading(false);
     }
@@ -1345,7 +1566,7 @@ class EnrollmentController extends GetxController
         }
       }
     } catch (e) {
-      print('Error during sync: $e');
+      logger.e('Error during sync', e);
     }
   }
 
@@ -1355,14 +1576,30 @@ class EnrollmentController extends GetxController
 
     try {
       if (isOnline.value) {
-        // Mock payment processing
-        await Future.delayed(const Duration(seconds: 2));
-
-        await dbHelper.updateFamilyPaymentStatus(
-          familyId,
-          status: 'PAID',
+        // Online payment processing
+        final paymentResult = await _arifpayService.initiatePayment(
+          amount: amount,
+          currency: 'ETB',
+          orderId: 'ORD_${DateTime.now().millisecondsSinceEpoch}',
+          description: 'CBHI Membership Payment',
         );
-        paymentStatus.value = 'PAID';
+
+        if (paymentResult.success) {
+          await dbHelper.updateFamilyPaymentStatus(
+            familyId,
+            status: 'PAID',
+            paymentMethod: paymentResult.paymentMethod, // Updated property name
+            paymentReference:
+                paymentResult.transactionId, // Updated property name
+          );
+          paymentStatus.value = 'PAID';
+        } else {
+          await dbHelper.updateFamilyPaymentStatus(
+            familyId,
+            status: 'FAILED',
+          );
+          paymentStatus.value = 'FAILED';
+        }
       } else {
         // Offline payment handling
         await dbHelper.updateFamilyPaymentStatus(
@@ -1370,12 +1607,8 @@ class EnrollmentController extends GetxController
           status: 'PENDING',
         );
         paymentStatus.value = 'PENDING';
-        Get.snackbar(
-          'Offline Mode',
-          'Payment will be processed when connection is restored',
-          backgroundColor: Colors.orange,
-          colorText: Colors.white,
-        );
+        showSnackBar('Offline Mode',
+            'Payment will be processed when connection is restored');
       }
     } catch (e) {
       await dbHelper.updateFamilyPaymentStatus(
@@ -1383,12 +1616,8 @@ class EnrollmentController extends GetxController
         status: 'FAILED',
       );
       paymentStatus.value = 'FAILED';
-      Get.snackbar(
-        'Payment Error',
-        'Failed to process payment: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      showSnackBar('Payment Error', 'Failed to process payment: $e',
+          isError: true);
     }
   }
 
@@ -1421,7 +1650,7 @@ class EnrollmentController extends GetxController
         await cameraController!.initialize();
       }
     } catch (e) {
-      print('Error initializing cameras: $e');
+      logger.e("Error initializing cameras", e);
     }
   }
 
@@ -1438,11 +1667,10 @@ class EnrollmentController extends GetxController
         await extractTextFromReceipt(photo);
       }
     } catch (e) {
-      Get.snackbar(
+      showSnackBar(
         'Error',
         'Failed to capture receipt: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
+        isError: true,
       );
     }
   }
@@ -1461,7 +1689,7 @@ class EnrollmentController extends GetxController
       String fullText = '';
       for (TextBlock block in recognizedText.blocks) {
         for (TextLine line in block.lines) {
-          fullText += line.text + '\n';
+          fullText += '${line.text}\n';
         }
       }
 
@@ -1475,26 +1703,21 @@ class EnrollmentController extends GetxController
         transactionId.value = extractedId;
         paymentMethod.value = 'offline_ocr';
 
-        Get.snackbar(
+        showSnackBar(
           'Success',
           'Transaction ID extracted: $extractedId',
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
         );
       } else {
-        Get.snackbar(
+        showSnackBar(
           'OCR Complete',
           'Please manually enter the transaction ID',
-          backgroundColor: Colors.orange,
-          colorText: Colors.white,
         );
       }
     } catch (e) {
-      Get.snackbar(
+      showSnackBar(
         'OCR Error',
         'Failed to extract text: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
+        isError: true,
       );
     } finally {
       isProcessingOCR.value = false;
@@ -1545,9 +1768,10 @@ class EnrollmentController extends GetxController
   Future<void> saveOfflinePaymentData() async {
     try {
       final dbHelper = DatabaseHelper();
+      print("Before saving: " + transactionId.value);
 
       // Store payment data locally
-      await dbHelper.insertOfflinePayment({
+      final paymentData = {
         'family_id': familyId.value,
         'transaction_id': transactionId.value,
         'payment_method': paymentMethod.value,
@@ -1555,20 +1779,24 @@ class EnrollmentController extends GetxController
         'receipt_image_path': receiptPhoto.value?.path,
         'amount': paymentAmount.value,
         'sync_status': 'PENDING',
-      });
+      };
 
-      Get.snackbar(
+      await dbHelper.insertOfflinePayment(paymentData);
+      print("After saving: " + transactionId.value);
+
+      // Navigate to invoice view
+      Get.to(() => OfflinePaymentInvoiceView(paymentData: paymentData));
+
+      showSnackBar(
         'Success',
         'Payment data saved for offline sync',
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
       );
     } catch (e) {
-      Get.snackbar(
+      print(e);
+      showSnackBar(
         'Error',
         'Failed to save payment data: $e',
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
+        isError: true,
       );
     }
   }
@@ -1579,6 +1807,49 @@ class EnrollmentController extends GetxController
     if (id.length < 8) return false;
     // Add more validation rules as needed
     return true;
+  }
+
+  /// Test GraphQL family creation (for debugging)
+  Future<void> testGraphQLConnection() async {
+    try {
+      logger.i("Testing GraphQL connection...");
+      isLoading.value = true;
+
+      final repo = getIt.get<EnrollmentRepository>();
+
+      // Test with minimal data
+      final testResult = await repo.createFamilyFromForm(
+        chfId: 'TEST${DateTime.now().millisecondsSinceEpoch}',
+        lastName: 'TestLastName',
+        otherNames: 'TestFirstName',
+        gender: 'M',
+        dob: '1990-01-01',
+        phone: '+1234567890',
+        email: 'test@example.com',
+        identificationNo: 'TEST123',
+        maritalStatus: 'S',
+        photoBase64: null,
+        locationId: selectedRegion.value?.id ?? 1,
+        poverty: false,
+        familyTypeId: 'H',
+        address: 'Test Address',
+        confirmationTypeId: 'C',
+        confirmationNo: 'TEST123456',
+      );
+
+      if (!testResult.error) {
+        logger.i("GraphQL test successful!");
+        SnackBars.success('Test Success', 'GraphQL connection is working!');
+      } else {
+        logger.e("GraphQL test failed: ${testResult.message}");
+        SnackBars.failure('Test Failed', testResult.message ?? 'Unknown error');
+      }
+    } catch (e) {
+      logger.e("GraphQL test error: $e");
+      SnackBars.failure('Test Error', 'Failed to test GraphQL: $e');
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   @override

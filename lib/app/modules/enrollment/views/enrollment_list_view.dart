@@ -26,13 +26,13 @@ class EnrollmentListView extends GetView<EnrollmentController> {
         actions: [
           IconButton(
             icon: Icon(Icons.add, color: Colors.white),
-            onPressed: () => Get.toNamed('/enrollment'),
+            onPressed: () => Get.toNamed('/enhanced-enrollment'),
           ),
         ],
       ),
       body: _buildEmptyState(),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => Get.toNamed('/enrollment'),
+        onPressed: () => Get.toNamed('/enhanced-enrollment'),
         backgroundColor: Color(0xFF036273),
         child: Icon(Icons.add, color: Colors.white),
       ),
@@ -68,7 +68,7 @@ class EnrollmentListView extends GetView<EnrollmentController> {
           ),
           SizedBox(height: 32.h),
           ElevatedButton.icon(
-            onPressed: () => Get.toNamed('/enrollment'),
+            onPressed: () => Get.toNamed('/enhanced-enrollment'),
             icon: Icon(Icons.add, color: Colors.white),
             label: Text(
               'Register New Family',
