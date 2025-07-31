@@ -4,9 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
+import 'package:collection/collection.dart';
 import '../../../data/remote/services/enrollment/reference_data_service.dart';
 import '../../../data/remote/services/enrollment/enhanced_insuree_service.dart';
+import '../../../data/remote/services/enrollment/product_service.dart';
+import '../../../data/remote/services/enrollment/policy_service.dart';
+import '../../../data/remote/services/enrollment/contribution_service.dart';
+import '../../../data/local/services/enhanced_contribution_service.dart';
 import '../../../data/remote/dto/enrollment/insuree_dto.dart';
+import '../../../data/remote/dto/enrollment/product_dto.dart';
+import '../../../data/remote/dto/enrollment/policy_dto.dart';
 import '../../../data/remote/dto/enrollment/profession_dto.dart';
 import '../../../data/remote/dto/enrollment/education_dto.dart';
 import '../../../data/remote/dto/enrollment/relation_dto.dart';
@@ -28,6 +35,11 @@ class EnhancedEnrollmentController extends GetxController {
   final ReferenceDataService _referenceService = getIt<ReferenceDataService>();
   final EnhancedInsureeService _insureeService =
       getIt<EnhancedInsureeService>();
+  final ProductService _productService = getIt<ProductService>();
+  final PolicyService _policyService = getIt<PolicyService>();
+  final ContributionService _contributionService = getIt<ContributionService>();
+  final EnhancedContributionService _enhancedContributionService =
+      getIt<EnhancedContributionService>();
   final EnhancedDatabaseHelper _dbHelper = getIt<EnhancedDatabaseHelper>();
   final Uuid _uuid = const Uuid();
 
@@ -121,6 +133,25 @@ class EnhancedEnrollmentController extends GetxController {
   // Current family data
   final Rx<FamilyDto?> currentFamily = Rx<FamilyDto?>(null);
   final RxList<InsureeDto> familyMembers = <InsureeDto>[].obs;
+
+  // Current policy and contribution
+  final Rx<PolicyDto?> currentPolicy = Rx<PolicyDto?>(null);
+
+  // Product and membership selection
+  final RxList<ProductDto> availableProducts = <ProductDto>[].obs;
+  final RxList<MembershipTypeDto> availableMembershipTypes =
+      <MembershipTypeDto>[].obs;
+  final Rx<String> selectedProductId = ''.obs;
+  final Rx<String> selectedMembershipTypeId = ''.obs;
+  final Rx<MembershipTypeDto?> selectedMembershipType =
+      Rx<MembershipTypeDto?>(null);
+
+  // Enhanced contribution calculation
+  final Rx<ContributionBreakdown?> currentContributionBreakdown =
+      Rx<ContributionBreakdown?>(null);
+
+  // Dynamic membership type selection
+  final Rx<String> selectedAreaType = ''.obs;
 
   // Payment related observables
   final RxBool showPaymentSection = false.obs;
@@ -756,15 +787,21 @@ class EnhancedEnrollmentController extends GetxController {
         }
       }
 
-      // Handle payment
-      if (calculatedContribution.value > 0 && !isOfflinePayment.value) {
-        // Handle online payment
-        await _handleOnlinePayment();
-      } else if (calculatedContribution.value > 0 && isOfflinePayment.value) {
-        // Handle offline payment
-        await processOfflinePayment(fromRegistrationFlow: true);
+      // Create policy after family creation
+      await _createPolicyForFamily(localFamilyId);
+
+      // Handle payment and contribution creation
+      if (currentContributionBreakdown.value != null &&
+          currentContributionBreakdown.value!.totalAmount > 0) {
+        if (!isOfflinePayment.value) {
+          // Handle online payment and contribution
+          await _handleOnlinePaymentAndContribution();
+        } else {
+          // Handle offline payment and contribution
+          await _handleOfflinePaymentAndContribution();
+        }
       } else {
-        // No payment required or indigent
+        // No payment required
         _showSuccessPage();
       }
     } catch (e) {
@@ -783,6 +820,116 @@ class EnhancedEnrollmentController extends GetxController {
   Future<void> _handleOfflinePayment() async {
     // For offline payment, show invoice and mark as pending
     _showOfflineInvoice();
+  }
+
+  // Create policy for the family
+  Future<void> _createPolicyForFamily(int familyId) async {
+    if (selectedProductId.value.isEmpty) {
+      SnackBars.warning('Warning', 'No product selected for policy creation');
+      return;
+    }
+
+    try {
+      final now = DateTime.now();
+      final enrollDate = now.toIso8601String().split('T')[0];
+      final startDate = enrollDate;
+
+      // Calculate expiry date using product's enrolment period or default
+      final selectedProduct = selectedMembershipType.value?.productDetails;
+      final expiryDate = _policyService
+          .calculateExpiryDate(selectedProduct?.enrolmentPeriodEndDate);
+
+      final policyResult = await _policyService.createPolicy(
+        enrollDate: enrollDate,
+        startDate: startDate,
+        expiryDate: expiryDate,
+        value: currentContributionBreakdown.value?.totalAmount
+                .toStringAsFixed(2) ??
+            '0.00',
+        productId: int.parse(selectedProductId.value),
+        familyId: familyId,
+        officerId: _getAdminId(),
+        tryOnlineFirst: isOnline.value,
+      );
+
+      if (!policyResult.error) {
+        currentPolicy.value = policyResult.data as PolicyDto;
+        SnackBars.success('Success', 'Policy created successfully');
+      } else {
+        SnackBars.warning(
+            'Warning', 'Policy creation failed: ${policyResult.message}');
+      }
+    } catch (e) {
+      SnackBars.failure('Error', 'Failed to create policy: $e');
+    }
+  }
+
+  // Handle online payment and contribution creation
+  Future<void> _handleOnlinePaymentAndContribution() async {
+    if (currentPolicy.value == null) {
+      SnackBars.failure('Error', 'Policy must be created before payment');
+      return;
+    }
+
+    try {
+      // Generate receipt number
+      final receiptNumber = _contributionService.generateReceiptNumber();
+      final payDate = DateTime.now().toIso8601String().split('T')[0];
+      final totalAmount =
+          currentContributionBreakdown.value!.totalAmount.toStringAsFixed(2);
+
+      // Create contribution
+      final contributionResult = await _contributionService.createContribution(
+        receipt: receiptNumber,
+        payDate: payDate,
+        amount: totalAmount,
+        policyUuid: currentPolicy.value!.uuid!,
+        tryOnlineFirst: true,
+      );
+
+      if (!contributionResult.error) {
+        SnackBars.success('Success', 'Payment processed successfully');
+        _showSuccessPage();
+      } else {
+        SnackBars.failure('Payment Failed', contributionResult.message);
+      }
+    } catch (e) {
+      SnackBars.failure('Error', 'Failed to process payment: $e');
+    }
+  }
+
+  // Handle offline payment and contribution creation
+  Future<void> _handleOfflinePaymentAndContribution() async {
+    if (currentPolicy.value == null) {
+      SnackBars.failure('Error', 'Policy must be created before payment');
+      return;
+    }
+
+    try {
+      // Create offline contribution record
+      final receiptNumber = _contributionService.generateReceiptNumber();
+      final payDate = DateTime.now().toIso8601String().split('T')[0];
+      final totalAmount =
+          currentContributionBreakdown.value!.totalAmount.toStringAsFixed(2);
+
+      // Create contribution locally (will sync later)
+      final contributionResult = await _contributionService.createContribution(
+        receipt: receiptNumber,
+        payDate: payDate,
+        amount: totalAmount,
+        policyUuid: currentPolicy.value!.uuid!,
+        tryOnlineFirst: false, // Force offline
+      );
+
+      if (!contributionResult.error) {
+        _showOfflineInvoice();
+      } else {
+        SnackBars.failure('Error',
+            'Failed to create offline payment record: ${contributionResult.message}');
+      }
+    } catch (e) {
+      SnackBars.failure('Error', 'Failed to process offline payment: $e');
+    }
   }
 
   void _showOfflineInvoice() {

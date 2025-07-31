@@ -154,6 +154,83 @@ class EnhancedDatabaseHelper {
       )
     ''');
 
+    // Products table
+    await db.execute('''
+      CREATE TABLE products (
+        id TEXT PRIMARY KEY,
+        code TEXT,
+        name TEXT NOT NULL,
+        lump_sum TEXT,
+        premium_adult TEXT,
+        age_maximal INTEGER,
+        card_replacement_fee TEXT,
+        enrolment_period_start_date TEXT,
+        enrolment_period_end_date TEXT,
+        last_synced TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+
+    // Membership types table
+    await db.execute('''
+      CREATE TABLE membership_types (
+        id TEXT PRIMARY KEY,
+        product_id TEXT,
+        region TEXT,
+        district TEXT,
+        level_type TEXT,
+        level_index INTEGER,
+        price TEXT,
+        product_node_id TEXT,
+        product_node_name TEXT,
+        product_lump_sum TEXT,
+        product_premium_adult TEXT,
+        product_age_maximal INTEGER,
+        product_card_replacement_fee TEXT,
+        last_synced TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(product_id) REFERENCES products(id)
+      )
+    ''');
+
+    // Policies table
+    await db.execute('''
+      CREATE TABLE policies (
+        local_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        enroll_date TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        expiry_date TEXT NOT NULL,
+        value TEXT DEFAULT '0.00',
+        product_id INTEGER NOT NULL,
+        family_id INTEGER NOT NULL,
+        officer_id INTEGER DEFAULT 1,
+        uuid TEXT NOT NULL UNIQUE,
+        sync_status INTEGER DEFAULT 0,
+        remote_policy_id INTEGER,
+        sync_error TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+
+    // Contributions table
+    await db.execute('''
+      CREATE TABLE contributions (
+        local_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        receipt TEXT NOT NULL,
+        pay_date TEXT NOT NULL,
+        pay_type TEXT DEFAULT 'B',
+        is_photo_fee INTEGER DEFAULT 0,
+        action TEXT DEFAULT 'ENFORCE',
+        amount TEXT NOT NULL,
+        policy_uuid TEXT NOT NULL,
+        sync_status INTEGER DEFAULT 0,
+        remote_contribution_id INTEGER,
+        sync_error TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(policy_uuid) REFERENCES policies(uuid)
+      )
+    ''');
+
     // Sync operations tracking table
     await db.execute('''
       CREATE TABLE sync_operations (
@@ -177,6 +254,12 @@ class EnhancedDatabaseHelper {
         'CREATE INDEX idx_sync_operations_status ON sync_operations(status)');
     await db.execute(
         'CREATE INDEX idx_sync_operations_entity ON sync_operations(entity_type, local_id)');
+    await db
+        .execute('CREATE INDEX idx_policies_family_id ON policies(family_id)');
+    await db.execute(
+        'CREATE INDEX idx_contributions_policy_uuid ON contributions(policy_uuid)');
+    await db.execute(
+        'CREATE INDEX idx_membership_types_product_id ON membership_types(product_id)');
   }
 
   // Reference data methods
