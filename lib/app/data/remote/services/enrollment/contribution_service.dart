@@ -67,24 +67,34 @@ class ContributionService {
   Future<ApiResponse> createContributionOnline(
       ContributionDto contribution) async {
     try {
-      const String mutation = '''
-        mutation CreatePremium(\$input: CreatePremiumInputType!) {
-          createPremium(input: \$input) {
+      final clientMutationId = _uuid.v4();
+      final clientMutationLabel = 'Create contribution';
+
+      // Create direct GraphQL mutation without input types
+      final mutation = '''
+        mutation {
+          createPremium(
+            input: {
+              clientMutationId: "$clientMutationId"
+              clientMutationLabel: "$clientMutationLabel"
+              receipt: "${contribution.receipt ?? ''}"
+              payDate: "${contribution.payDate ?? ''}"
+              payType: "${contribution.payType ?? 'B'}"
+              isPhotoFee: ${contribution.isPhotoFee ?? false}
+              action: "${contribution.action ?? 'ENFORCE'}"
+              amount: "${contribution.amount ?? '0.00'}"
+              policyUuid: "${contribution.policyUuid ?? ''}"
+            }
+          ) {
             clientMutationId
             internalId
           }
         }
       ''';
 
-      final clientMutationId = _uuid.v4();
-      final clientMutationLabel = 'Create contribution';
-
-      final input =
-          contribution.toGraphQLInput(clientMutationId, clientMutationLabel);
-
       final data = {
         'query': mutation,
-        'variables': {'input': input},
+        'variables': {},
       };
 
       final response = await dioClient.post('/api/graphql', data: data);

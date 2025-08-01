@@ -1,4 +1,7 @@
 import 'package:dio/dio.dart';
+import 'package:openimis_app/app/data/remote/dto/enrollment/product_dto.dart';
+import 'package:openimis_app/app/data/remote/services/enrollment/product_service.dart';
+import 'package:openimis_app/app/di/locator.dart';
 import '../../api/dio_client.dart';
 import '../../dto/enrollment/profession_dto.dart';
 import '../../dto/enrollment/education_dto.dart';
@@ -13,6 +16,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 class ReferenceDataService {
   final DioClient dioClient;
   final EnhancedDatabaseHelper _dbHelper = EnhancedDatabaseHelper();
+  final ProductService _productService = getIt.get<ProductService>();
 
   ReferenceDataService({required this.dioClient});
 
@@ -37,6 +41,7 @@ class ReferenceDataService {
         _syncFamilyTypes(),
         _syncConfirmationTypes(),
         _syncLocations(),
+        _productService.syncProductsIfNeeded(),
       ];
 
       final results = await Future.wait(futures);
@@ -268,6 +273,11 @@ class ReferenceDataService {
   }
 
   // Get cached data methods
+
+  Future<List<ProductDto>> getProducts() async {
+    return await _productService.getLocalProducts();
+  }
+
   Future<List<ProfessionDto>> getProfessions() async {
     return await _dbHelper.getProfessions();
   }

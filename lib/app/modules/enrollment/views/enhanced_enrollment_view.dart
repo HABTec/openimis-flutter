@@ -832,55 +832,6 @@ class EnhancedEnrollmentView extends StatelessWidget {
                       },
                     );
                   }),
-
-                  SizedBox(height: 12.h),
-
-                  // Enhanced Contribution Display
-                  Obx(() {
-                    if (controller.currentContributionBreakdown.value != null) {
-                      final breakdown =
-                          controller.currentContributionBreakdown.value!;
-                      return Container(
-                        width: double.infinity,
-                        padding: EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.blue.shade200),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Contribution Summary',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                color: Colors.blue.shade800,
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                            Text(
-                                'Members: ${breakdown.memberContributions.toStringAsFixed(2)} ETB'),
-                            Text(
-                                'Registration: ${breakdown.registrationFee.toStringAsFixed(2)} ETB'),
-                            Text(
-                                'Lump Sum: ${breakdown.lumpSum.toStringAsFixed(2)} ETB'),
-                            Divider(),
-                            Text(
-                              'Total: ${breakdown.totalAmount.toStringAsFixed(2)} ETB',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                color: Colors.green.shade800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-                    return SizedBox.shrink();
-                  }),
                 ],
               ),
             ),
@@ -1250,6 +1201,67 @@ class EnhancedEnrollmentView extends StatelessWidget {
             'Payment & Contribution',
             style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold),
           ),
+
+          SizedBox(height: 12.h),
+
+          // Enhanced Contribution Display
+          Obx(() {
+            if (controller.currentContributionBreakdown.value != null) {
+              final breakdown = controller.currentContributionBreakdown.value!;
+              return Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Contribution Summary',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Colors.blue.shade800,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                        'Premium Adult Rate: ${breakdown.premiumAdultRate.toStringAsFixed(2)} ETB'),
+                    SizedBox(height: 8),
+                    Text('Member Breakdown:',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    ...breakdown.memberBreakdowns.map((member) => Padding(
+                          padding: EdgeInsets.only(left: 16),
+                          child: Text(
+                              '${member.memberName}: ${member.amount.toStringAsFixed(2)} ETB (${member.reason})'),
+                        )),
+                    SizedBox(height: 8),
+                    Text('Summary:',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text(
+                        'Total Member Contributions: ${breakdown.memberContributions.toStringAsFixed(2)} ETB'),
+                    Text(
+                        'Registration Fee: ${breakdown.registrationFee.toStringAsFixed(2)} ETB'),
+                    Text(
+                        'Lump Sum: ${breakdown.lumpSum.toStringAsFixed(2)} ETB'),
+                    Divider(),
+                    Text(
+                      'Total: ${breakdown.totalAmount.toStringAsFixed(2)} ETB',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Colors.green.shade800,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return SizedBox.shrink();
+          }),
           SizedBox(height: 16.h),
 
           // Contribution Summary
@@ -1309,19 +1321,6 @@ class EnhancedEnrollmentView extends StatelessWidget {
                       Obx(() => Text(controller.areaType.value)),
                     ],
                   ),
-                  Obx(() {
-                    if (controller.povertyStatus.value) {
-                      return Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Poverty Discount:'),
-                          Text('50% Applied',
-                              style: TextStyle(color: Colors.green)),
-                        ],
-                      );
-                    }
-                    return SizedBox.shrink();
-                  }),
                   Divider(),
                   Obx(() => Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,

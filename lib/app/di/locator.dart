@@ -44,11 +44,12 @@ Future<void> setupLocator() async {
   /// Family Service (GraphQL)
   getIt.registerSingleton(FamilyService(dioClient: getIt<DioClient>()));
 
+  getIt.registerSingleton(ProductService(dioClient: getIt<DioClient>()));
+
   /// Enhanced Enrollment Services
   getIt.registerSingleton(ReferenceDataService(dioClient: getIt<DioClient>()));
   getIt
       .registerSingleton(EnhancedInsureeService(dioClient: getIt<DioClient>()));
-  getIt.registerSingleton(ProductService(dioClient: getIt<DioClient>()));
   getIt.registerSingleton(PolicyService(dioClient: getIt<DioClient>()));
   getIt.registerSingleton(ContributionService(dioClient: getIt<DioClient>()));
   getIt.registerSingleton(EnhancedContributionService());

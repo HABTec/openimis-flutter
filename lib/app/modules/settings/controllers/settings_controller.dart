@@ -28,7 +28,7 @@ class SettingsController extends GetxController {
     },
     {
       'name': 'Beta Server',
-      'url': 'https://imisbeta.hib.gov.np',
+      'url': 'https://cbhi.habtechsolution.com',
     },
     {
       'name': 'Production Server',

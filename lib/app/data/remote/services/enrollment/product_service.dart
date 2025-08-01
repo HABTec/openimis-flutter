@@ -353,12 +353,7 @@ class ProductService {
   /// Sync products if needed
   Future<ApiResponse> syncProductsIfNeeded() async {
     try {
-      if (await shouldSyncProducts()) {
-        return await fetchUserProducts();
-      } else {
-        final products = await getLocalProducts();
-        return ApiResponse.success(products, message: 'Using cached products');
-      }
+      return await fetchUserProducts();
     } catch (e) {
       return ApiResponse.failure('Failed to sync products: $e');
     }

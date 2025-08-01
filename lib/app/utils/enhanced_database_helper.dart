@@ -25,7 +25,7 @@ class EnhancedDatabaseHelper {
   }
 
   Future<Database> _initDB() async {
-    String path = join(await getDatabasesPath(), 'enhanced_enrollment.db');
+    String path = join(await getDatabasesPath(), 'enhanced_enrollment1.db');
     return await openDatabase(
       path,
       version: 1,
@@ -804,13 +804,15 @@ class EnhancedDatabaseHelper {
         await db.query('confirmation_types').then((rows) => rows.length);
     final locationsCount =
         await db.query('locations').then((rows) => rows.length);
-
+    final productsCount =
+        await db.query('products').then((rows) => rows.length);
     return professionsCount == 0 ||
         educationsCount == 0 ||
         relationsCount == 0 ||
         familyTypesCount == 0 ||
         confirmationTypesCount == 0 ||
-        locationsCount == 0;
+        locationsCount == 0 ||
+        productsCount == 0;
   }
 
   Future<Map<String, int>> getSyncStats() async {

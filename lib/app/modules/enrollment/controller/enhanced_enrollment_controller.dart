@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:get/get_state_manager/get_state_manager.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
-import 'package:collection/collection.dart';
 import '../../../data/remote/services/enrollment/reference_data_service.dart';
 import '../../../data/remote/services/enrollment/enhanced_insuree_service.dart';
 import '../../../data/remote/services/enrollment/product_service.dart';
@@ -29,13 +29,13 @@ import 'package:intl/intl.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/app_theme.dart';
+import '../views/widgets/qr_card_view.dart';
 
 class EnhancedEnrollmentController extends GetxController {
   // Services
   final ReferenceDataService _referenceService = getIt<ReferenceDataService>();
   final EnhancedInsureeService _insureeService =
       getIt<EnhancedInsureeService>();
-  final ProductService _productService = getIt<ProductService>();
   final PolicyService _policyService = getIt<PolicyService>();
   final ContributionService _contributionService = getIt<ContributionService>();
   final EnhancedContributionService _enhancedContributionService =
@@ -208,6 +208,7 @@ class EnhancedEnrollmentController extends GetxController {
     _initConnectivityListener();
     _checkReferenceDataAndInit();
     _setupLocationListeners();
+    _setDefaultTestValues();
   }
 
   void _initConnectivityListener() {
@@ -253,6 +254,113 @@ class EnhancedEnrollmentController extends GetxController {
         selectedVillageId.value = '';
       }
     });
+  }
+
+  /// Sets default test values for easier testing
+  void _setDefaultTestValues() {
+    // Family Head Information
+    headFirstNameController.text = 'Abebe';
+    headLastNameController.text = 'Kebede';
+    headPhoneController.text = '+251911123456';
+    headEmailController.text = 'abebe.kebede@email.com';
+    headPassportController.text = 'ET123456789';
+    headDobController.text = '1985-03-15';
+
+    // Set default observable values
+    headGender.value = 'M';
+    headMaritalStatus.value = 'M'; // Married
+    headIdType.value = 'D'; // Default ID type
+    headProfessionId.value = 1; // Will be set to first available profession
+    headEducationId.value = 1; // Will be set to first available education
+
+    // Family Details
+    addressController.text = 'Kebele 01, House No. 123, Addis Ababa';
+    familyTypeId.value = 'H'; // Household
+    confirmationTypeId.value = 'A'; // Default confirmation type
+    confirmationNumberController.text = 'CONF123456';
+
+    // Member form defaults (for when adding members)
+    memberFirstNameController.text = 'Sara';
+    memberLastNameController.text = 'Kebede';
+    memberPhoneController.text = '+251922654321';
+    memberEmailController.text = 'sara.kebede@email.com';
+    memberPassportController.text = 'ET987654321';
+    memberDobController.text = '1990-07-20';
+
+    memberGender.value = 'F';
+    memberMaritalStatus.value = 'S'; // Single
+    memberIdType.value = 'D';
+    memberProfessionId.value = 1;
+    memberEducationId.value = 1;
+    memberRelationshipId.value = 1; // Will be set to first available relation
+
+    // CHF ID Format
+    chfIdFormat.value = 1;
+
+    // Payment defaults
+    paymentMethod.value = 'offline';
+    isOfflinePayment.value = true;
+    transactionId.value = 'TXN123456789';
+
+    // Poverty status
+    povertyStatus.value = false;
+  }
+
+  /// Calculate contribution using the enhanced formula
+  void calculateEnhancedContribution() async {
+    if (selectedMembershipType.value == null) return;
+
+    try {
+      // Prepare family members for calculation
+      final List<FamilyMemberForCalculation> members = [];
+
+      // Add head
+      final headAge = _calculateAge(headDobController.text);
+      members.add(FamilyMemberForCalculation(
+        name: '${headFirstNameController.text} ${headLastNameController.text}',
+        disabled: false,
+        age: headAge,
+        isHead: true, // Could be determined from form data
+      ));
+
+      // Add family members
+      for (final member in familyMembers) {
+        final memberAge = _calculateAge(member.dob ?? '');
+        members.add(FamilyMemberForCalculation(
+          name: '${member.lastName}',
+          age: memberAge,
+          isHead: false,
+          disabled: false, // Could be determined from member data
+        ));
+      }
+
+      final breakdown =
+          await _enhancedContributionService.calculateContribution(
+        familyMembers: members,
+        membershipTypeId: selectedMembershipType.value!.id!,
+      );
+
+      currentContributionBreakdown.value = breakdown.breakdown;
+      calculatedContribution.value = breakdown.breakdown!.totalAmount;
+    } catch (e) {
+      print('Error calculating enhanced contribution: $e');
+    }
+  }
+
+  /// Calculate age from date of birth string
+  int _calculateAge(String dobString) {
+    try {
+      final dob = DateTime.parse(dobString);
+      final now = DateTime.now();
+      int age = now.year - dob.year;
+      if (now.month < dob.month ||
+          (now.month == dob.month && now.day < dob.day)) {
+        age--;
+      }
+      return age;
+    } catch (e) {
+      return 0;
+    }
   }
 
   void _filterDistrictsByRegion(String regionId) {
@@ -371,6 +479,7 @@ class EnhancedEnrollmentController extends GetxController {
         _referenceService.getLocationsByType('D'), // Districts
         _referenceService.getLocationsByType('W'), // Municipalities
         _referenceService.getLocationsByType('V'), // Villages
+        _referenceService.getProducts(),
       ];
 
       final results = await Future.wait(futures);
@@ -384,7 +493,17 @@ class EnhancedEnrollmentController extends GetxController {
       districts.assignAll(results[6] as List<FlatLocationDto>);
       municipalities.assignAll(results[7] as List<FlatLocationDto>);
       villages.assignAll(results[8] as List<FlatLocationDto>);
-
+      availableProducts.assignAll(results[9] as List<ProductDto>);
+      availableMembershipTypes.assignAll((results[9] as List<ProductDto>)
+          .expand((product) => product.membershipTypes ?? [])
+          .toList()
+          .fold<Map<String, MembershipTypeDto>>({}, (map, type) {
+            map[type.id] = type;
+            return map;
+          })
+          .values
+          .toList());
+      selectedProductId.value = availableProducts.first.id ?? '';
       print("Loaded locations:");
       print("Regions: ${regions.length}");
       print("Districts: ${districts.length}");
@@ -494,43 +613,6 @@ class EnhancedEnrollmentController extends GetxController {
     return 1; // Default admin ID
   }
 
-  // Contribution Calculation
-  Future<void> calculateContribution() async {
-    try {
-      // Basic contribution calculation logic
-      double baseRate = 50.0; // Base rate
-      double memberRate = 25.0; // Per member rate
-
-      // Adjust based on membership type and level
-      if (membershipType.value == 'Indigent') {
-        baseRate = 0.0; // Free for indigent
-        memberRate = 0.0;
-      } else if (membershipLevel.value == 'Level 2') {
-        baseRate *= 1.5; // 50% increase for Level 2
-        memberRate *= 1.5;
-      }
-
-      // Area type adjustment
-      if (areaType.value == 'Rural') {
-        baseRate *= 0.8; // 20% discount for rural
-        memberRate *= 0.8;
-      }
-
-      // Poverty status discount
-      if (povertyStatus.value) {
-        baseRate *= 0.5; // 50% discount for poverty
-        memberRate *= 0.5;
-      }
-
-      // Calculate total (base + members)
-      final memberCount = familyMembers.length + 1; // +1 for head
-      calculatedContribution.value =
-          baseRate + (memberRate * (memberCount - 1));
-    } catch (e) {
-      SnackBars.failure('Error', 'Failed to calculate contribution: $e');
-    }
-  }
-
   // Step Navigation
   void nextStep() {
     if (currentStep.value < totalSteps) {
@@ -538,7 +620,7 @@ class EnhancedEnrollmentController extends GetxController {
         currentStep.value++;
         if (currentStep.value == 4) {
           // Payment step
-          calculateContribution();
+          calculateEnhancedContribution();
           showPaymentSection.value = true;
         }
       }
@@ -672,7 +754,7 @@ class EnhancedEnrollmentController extends GetxController {
       _clearMemberForm();
 
       // Recalculate contribution
-      calculateContribution();
+      calculateEnhancedContribution();
 
       SnackBars.success('Success', 'Family member added successfully');
     } catch (e) {
@@ -684,7 +766,7 @@ class EnhancedEnrollmentController extends GetxController {
   void removeFamilyMember(int index) {
     if (index >= 0 && index < familyMembers.length) {
       familyMembers.removeAt(index);
-      calculateContribution();
+      calculateEnhancedContribution();
       SnackBars.success('Success', 'Family member removed');
     }
   }
@@ -1408,23 +1490,61 @@ class FamilyRegistrationSuccessView extends StatelessWidget {
                 ),
               ),
               SizedBox(height: 32),
-              ElevatedButton(
-                onPressed: () {
-                  Get.offAllNamed('/home');
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: Text(
-                  'Go to Home',
-                  style: TextStyle(fontSize: 16),
+
+              // QR Card and Membership Actions
+              Container(
+                width: double.infinity,
+                child: Column(
+                  children: [
+                    // Generate QR Code & Membership Card Button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _showQRCard(),
+                        icon: Icon(Icons.qr_code, size: 24),
+                        label: Text(
+                          'Generate QR Card & Membership Card',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue.shade600,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    SizedBox(height: 12),
+
+                    // Go to Home Button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Get.offAllNamed('/home');
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: Text(
+                          'Go to Home',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
+
               SizedBox(height: 16),
               TextButton(
                 onPressed: () {
@@ -1443,6 +1563,53 @@ class FamilyRegistrationSuccessView extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  void _showQRCard() {
+    final chfId = family.headInsuree?.chfId ?? 'PENDING';
+    final memberName =
+        '${family.headInsuree?.otherNames ?? ''} ${family.headInsuree?.lastName ?? ''}'
+            .trim();
+
+    if (chfId.isEmpty || chfId == 'PENDING') {
+      Get.snackbar(
+        'Information',
+        'CHF ID is not yet available. Please wait for the family to be processed.',
+        backgroundColor: Colors.orange,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    // Show loading dialog while generating QR card
+    Get.dialog(
+      AlertDialog(
+        title: Row(
+          children: [
+            CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue.shade600),
+            ),
+            SizedBox(width: 16),
+            Text('Generating QR Card'),
+          ],
+        ),
+        content: Text('Creating your CBHI membership card...'),
+      ),
+      barrierDismissible: false,
+    );
+
+    // Simulate QR generation delay
+    Future.delayed(Duration(seconds: 2), () {
+      Get.back(); // Close loading dialog
+
+      // Navigate to QR card view
+      Get.to(() => QRCardView(
+            chfid: chfId,
+            memberName: memberName,
+            receiptData: null, // Will be null for offline registrations
+          ));
+    });
   }
 }
 

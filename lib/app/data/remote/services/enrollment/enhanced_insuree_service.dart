@@ -29,13 +29,21 @@ class EnhancedInsureeService {
     return 1; // Default officer ID
   }
 
+  // Get current user's health facility ID
+  int _getHealthFacilityId() {
+    final user = AuthController.to.currentUser;
+    // For now, use a default health facility ID of 17
+    // TODO: Implement proper health facility ID retrieval when available
+    return 17; // Default health facility ID
+  }
+
   /// Create family with head insuree (offline-first)
   Future<ApiResponse> createFamily(FamilyDto family) async {
     try {
       // Always save locally first
       final localId = await _dbHelper.insertFamily(family);
-
-      if (await _isOnline()) {
+      final isOnline = await _isOnline();
+      if (isOnline) {
         // Try to sync immediately if online
         final syncResult = await _syncFamilyToServer(localId);
         if (!syncResult.error) {
@@ -139,26 +147,65 @@ class EnhancedInsureeService {
         return ApiResponse.failure('Family not found');
       }
 
-      // Create GraphQL mutation
-      const String mutation = '''
-        mutation CreateFamily(\$input: CreateFamilyInputType!) {
-          createFamily(input: \$input) {
+      final clientMutationId = _uuid.v4();
+      final clientMutationLabel =
+          'Create family - ${family.headInsuree?.otherNames ?? ''} ${family.headInsuree?.lastName ?? ''} (${family.headInsuree?.chfId ?? ''})';
+
+      // Create direct GraphQL mutation without input types
+      final mutation = '''
+        mutation {
+          createFamily(
+            input: {
+              clientMutationId: "$clientMutationId"
+              clientMutationLabel: "$clientMutationLabel"
+              
+              headInsuree: {
+                chfId: "${family.headInsuree?.chfId ?? ''}"
+                lastName: "${family.headInsuree?.lastName ?? ''}"
+                otherNames: "${family.headInsuree?.otherNames ?? ''}"
+                genderId: "${family.headInsuree?.genderId ?? 'M'}"
+                dob: "${family.headInsuree?.dob ?? ''}"
+                head: ${family.headInsuree?.head ?? true}
+                marital: "${family.headInsuree?.marital ?? 'N'}"
+                passport: "${family.headInsuree?.passport ?? ''}"
+                phone: "${family.headInsuree?.phone ?? ''}"
+                email: "${family.headInsuree?.email ?? ''}"
+                ${family.headInsuree?.photo != null ? '''
+                photo: {
+                  officerId: ${_getOfficerId()}
+                  date: "${family.headInsuree!.photo!.date}"
+                }
+                ''' : ''}
+                cardIssued: ${family.headInsuree?.cardIssued ?? true}
+                professionId: ${family.headInsuree?.professionId ?? 1}
+                educationId: ${family.headInsuree?.educationId ?? 1}
+                typeOfIdId: "${family.headInsuree?.typeOfIdId ?? 'N'}"
+                status: "${family.headInsuree?.status ?? 'AC'}"
+                healthFacilityId: ${_getHealthFacilityId()}
+              }
+
+              locationId: ${family.locationId ?? 0}
+              poverty: ${family.poverty ?? false}
+              familyTypeId: "${family.familyTypeId ?? 'H'}"
+              address: "${family.address ?? ''}"
+              confirmationTypeId: "${family.confirmationTypeId ?? 'C'}"
+              confirmationNo: "${family.confirmationNo ?? ''}"
+              jsonExt: "${family.jsonExt ?? '{}'}"
+            }
+          ) {
             clientMutationId
             internalId
           }
         }
       ''';
 
-      final clientMutationId = _uuid.v4();
-      final input = family.toGraphQLInput(_getOfficerId(), clientMutationId);
-
       final data = {
         'query': mutation,
-        'variables': {'input': input},
+        'variables': {},
       };
 
       final response = await dioClient.post('/api/graphql', data: data);
-
+      print("create family response: ${response.data}");
       if (response.statusCode == 200 &&
           response.data['data']['createFamily'] != null) {
         final result = response.data['data']['createFamily'];
@@ -189,6 +236,7 @@ class EnhancedInsureeService {
     } catch (e) {
       await _dbHelper.updateFamilySyncStatus(localId, 2,
           syncError: e.toString());
+      print("Failed to sync family: $e");
       return ApiResponse.failure('Failed to sync family: $e');
     }
   }
@@ -204,26 +252,52 @@ class EnhancedInsureeService {
         return ApiResponse.failure('Insuree not found');
       }
 
-      // Create GraphQL mutation
-      const String mutation = '''
-        mutation CreateInsuree(\$input: CreateInsureeInputType!) {
-          createInsuree(input: \$input) {
+      final clientMutationId = _uuid.v4();
+      final clientMutationLabel = 'Create insuree - ${insuree.chfId}';
+
+      // Create direct GraphQL mutation without input types
+      final mutation = '''
+        mutation {
+          createInsuree(
+            input: {
+              clientMutationId: "$clientMutationId"
+              clientMutationLabel: "$clientMutationLabel"
+              chfId: "${insuree.chfId ?? ''}"
+              lastName: "${insuree.lastName ?? ''}"
+              otherNames: "${insuree.otherNames ?? ''}"
+              genderId: "${insuree.genderId ?? 'M'}"
+              dob: "${insuree.dob ?? ''}"
+              head: ${insuree.head ?? false}
+              marital: "${insuree.marital ?? 'N'}"
+              passport: "${insuree.passport ?? ''}"
+              phone: "${insuree.phone ?? ''}"
+              email: "${insuree.email ?? ''}"
+              ${insuree.photo != null ? '''
+              photo: {
+                officerId: ${insuree.photo!.officerId ?? _getOfficerId()}
+                date: "${insuree.photo!.date ?? DateTime.now().toIso8601String().split('T')[0]}"
+                photo: "${insuree.photo!.photo ?? ''}"
+              }
+              ''' : ''}
+              cardIssued: ${insuree.cardIssued ?? true}
+              professionId: ${insuree.professionId ?? 1}
+              educationId: ${insuree.educationId ?? 1}
+              typeOfIdId: "${insuree.typeOfIdId ?? 'D'}"
+              familyId: ${insuree.familyId ?? 0}
+              relationshipId: ${insuree.relationshipId ?? 1}
+              status: "${insuree.status ?? 'AC'}"
+              jsonExt: "${insuree.jsonExt ?? '{}'}"
+            }
+          ) {
             clientMutationId
             internalId
           }
         }
       ''';
 
-      final clientMutationId = _uuid.v4();
-      final input = {
-        'clientMutationId': clientMutationId,
-        'clientMutationLabel': 'Create insuree - ${insuree.chfId}',
-        ...insuree.toGraphQLInput(_getOfficerId()),
-      };
-
       final data = {
         'query': mutation,
-        'variables': {'input': input},
+        'variables': {},
       };
 
       final response = await dioClient.post('/api/graphql', data: data);

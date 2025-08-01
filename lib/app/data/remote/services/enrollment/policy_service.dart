@@ -68,25 +68,36 @@ class PolicyService {
   /// Create policy online via GraphQL
   Future<ApiResponse> createPolicyOnline(PolicyDto policy) async {
     try {
-      const String mutation = '''
-        mutation CreatePolicy(\$input: CreatePolicyInputType!) {
-          createPolicy(input: \$input) {
+      final clientMutationId = _uuid.v4();
+      final clientMutationLabel =
+          'Create Policy ${policy.familyId} - ${policy.startDate} : ${policy.expiryDate}';
+
+      // Create direct GraphQL mutation without input types
+      final mutation = '''
+        mutation {
+          createPolicy(
+            input: {
+              clientMutationId: "$clientMutationId"
+              clientMutationLabel: "$clientMutationLabel"
+              enrollDate: "${policy.enrollDate ?? ''}"
+              startDate: "${policy.startDate ?? ''}"
+              expiryDate: "${policy.expiryDate ?? ''}"
+              value: "${policy.value ?? '0.00'}"
+              productId: ${policy.productId ?? 0}
+              familyId: ${policy.familyId ?? 0}
+              officerId: ${policy.officerId ?? 1}
+              uuid: "${policy.uuid ?? ''}"
+            }
+          ) {
             clientMutationId
             internalId
           }
         }
       ''';
 
-      final clientMutationId = _uuid.v4();
-      final clientMutationLabel =
-          'Create Policy ${policy.familyId} - ${policy.startDate} : ${policy.expiryDate}';
-
-      final input =
-          policy.toGraphQLInput(clientMutationId, clientMutationLabel);
-
       final data = {
         'query': mutation,
-        'variables': {'input': input},
+        'variables': {},
       };
 
       final response = await dioClient.post('/api/graphql', data: data);
