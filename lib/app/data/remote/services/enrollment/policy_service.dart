@@ -112,7 +112,7 @@ class PolicyService {
           await _updatePolicySyncStatus(policy.localId!, 1,
               remotePolicyId: remotePolicyId);
 
-          return ApiResponse.success(remotePolicyId,
+          return ApiResponse.success(policy,
               message: 'Policy created successfully');
         }
       }

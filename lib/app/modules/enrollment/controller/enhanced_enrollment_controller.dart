@@ -862,6 +862,7 @@ class EnhancedEnrollmentController extends GetxController {
       // Add family members
       for (final member in familyMembers) {
         member.localFamilyId = localFamilyId;
+        member.familyId = localFamilyId;
         final memberResult = await _insureeService.createInsuree(member);
         if (memberResult.error) {
           SnackBars.warning(
@@ -1431,42 +1432,42 @@ class FamilyRegistrationSuccessView extends StatelessWidget {
             children: [
               Icon(
                 Icons.check_circle,
-                size: 100,
+                size: 60,
                 color: Colors.green,
               ),
               SizedBox(height: 24),
               Text(
                 'Family Registered Successfully!',
                 style: TextStyle(
-                  fontSize: 24,
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: Colors.green.shade700,
                 ),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 16),
+              SizedBox(height: 4),
               Text(
                 'Family Head: ${family.headInsuree?.otherNames ?? 'N/A'} ${family.headInsuree?.lastName ?? 'N/A'}',
-                style: TextStyle(fontSize: 18),
+                style: TextStyle(fontSize: 14),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 8),
+              SizedBox(height: 4),
               Text(
                 'CHF ID: ${family.headInsuree?.chfId ?? 'Pending'}',
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 14,
                   fontWeight: FontWeight.w500,
                   color: Colors.blue.shade600,
                 ),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 8),
+              SizedBox(height: 4),
               Text(
                 'Total Members: $memberCount',
-                style: TextStyle(fontSize: 16),
+                style: TextStyle(fontSize: 14),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 32),
+              SizedBox(height: 16),
               Container(
                 padding: EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -1479,7 +1480,7 @@ class FamilyRegistrationSuccessView extends StatelessWidget {
                     Icon(Icons.info, color: Colors.blue.shade600),
                     SizedBox(height: 8),
                     Text(
-                      'Your family has been registered offline and will be synced to the server when internet connection is available.',
+                      'If you are offline, your family has been registered offline and will be synced to the server when internet connection is available.',
                       style: TextStyle(
                         color: Colors.blue.shade700,
                         fontSize: 14,
@@ -1489,7 +1490,7 @@ class FamilyRegistrationSuccessView extends StatelessWidget {
                   ],
                 ),
               ),
-              SizedBox(height: 32),
+              SizedBox(height: 16),
 
               // QR Card and Membership Actions
               Container(

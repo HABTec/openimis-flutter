@@ -1715,7 +1715,7 @@ class EnhancedEnrollmentView extends StatelessWidget {
                             SizedBox(
                               width: 20.w,
                               height: 20.w,
-                              child: CircularProgressIndicator(
+                              child: const CircularProgressIndicator(
                                 strokeWidth: 2,
                                 valueColor:
                                     AlwaysStoppedAnimation<Color>(Colors.white),

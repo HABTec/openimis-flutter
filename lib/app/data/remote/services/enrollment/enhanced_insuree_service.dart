@@ -158,6 +158,7 @@ class EnhancedInsureeService {
             input: {
               clientMutationId: "$clientMutationId"
               clientMutationLabel: "$clientMutationLabel"
+              id: $localId
               
               headInsuree: {
                 chfId: "${family.headInsuree?.chfId ?? ''}"
@@ -209,7 +210,7 @@ class EnhancedInsureeService {
       if (response.statusCode == 200 &&
           response.data['data']['createFamily'] != null) {
         final result = response.data['data']['createFamily'];
-        final remoteFamilyId = int.tryParse(result['internalId'] ?? '0') ?? 0;
+        final remoteFamilyId = localId;
 
         // Update local record with sync success
         await _dbHelper.updateFamilySyncStatus(localId, 1,
