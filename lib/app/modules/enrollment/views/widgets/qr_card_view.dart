@@ -394,16 +394,7 @@ class _QRCardViewState extends State<QRCardView> {
   }
 
   String _generateQRData() {
-    return '''
-{
-  "chfid": "${widget.chfid}",
-  "name": "${widget.memberName}",
-  "type": "CBHI_MEMBER",
-  "status": "ACTIVE",
-  "enrollmentDate": "${DateTime.now().toIso8601String()}",
-  "receiptNumber": "${widget.receiptData?.receiptNumber ?? 'N/A'}"
-}
-''';
+    return widget.chfid;
   }
 
   void _downloadCard() async {
@@ -437,42 +428,76 @@ class _QRCardViewState extends State<QRCardView> {
       if (imageBytes != null) {
         // Get the downloads directory
         Directory? directory;
+        String filePath;
+
         if (Platform.isAndroid) {
-          directory = await getExternalStorageDirectory();
-          // Create CBHI folder in downloads
-          final cbhiDir = Directory('${directory!.path}/CBHI_Cards');
+          // Use the public Downloads directory
+          const String downloadsPath = '/storage/emulated/0/Download';
+          directory = Directory(downloadsPath);
+
+          // Create CBHI folder in downloads if it doesn't exist
+          final cbhiDir = Directory('$downloadsPath/CBHI_Cards');
           if (!await cbhiDir.exists()) {
-            await cbhiDir.create(recursive: true);
+            try {
+              await cbhiDir.create(recursive: true);
+              directory = cbhiDir;
+            } catch (e) {
+              // If we can't create subfolder, save directly to Downloads
+              print(
+                  'Could not create CBHI_Cards folder, saving to Downloads: $e');
+              directory = Directory(downloadsPath);
+            }
+          } else {
+            directory = cbhiDir;
           }
-          directory = cbhiDir;
         } else {
+          // For iOS, use documents directory
           directory = await getApplicationDocumentsDirectory();
         }
 
         // Generate filename with timestamp
         final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final fileName = 'CBHI_Card_${widget.chfid}_$timestamp.png';
-        final filePath = '${directory.path}/$fileName';
+        final cleanChfId =
+            widget.chfid.replaceAll('/', '_').replaceAll('\\', '_');
+        final fileName = 'CBHI_Card_${cleanChfId}_$timestamp.png';
+        filePath = '${directory.path}/$fileName';
 
-        // Save the file
-        final file = File(filePath);
-        await file.writeAsBytes(imageBytes);
+        try {
+          // Save the file
+          final file = File(filePath);
+          await file.writeAsBytes(imageBytes);
 
-        // Close loading dialog
-        Get.back();
+          // Close loading dialog
+          Get.back();
 
-        // Show success message
-        Get.snackbar(
-          'Success',
-          'Membership card saved to: $filePath',
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-          duration: Duration(seconds: 4),
-          mainButton: TextButton(
-            onPressed: () => _openFileLocation(filePath),
-            child: Text('Open', style: TextStyle(color: Colors.white)),
-          ),
-        );
+          // Show success message
+          final displayPath =
+              Platform.isAndroid ? 'Downloads/CBHI_Cards/' : filePath;
+
+          Get.snackbar(
+            'Success',
+            'Membership card saved to: $displayPath',
+            backgroundColor: Colors.green,
+            colorText: Colors.white,
+            duration: Duration(seconds: 5),
+            mainButton: TextButton(
+              onPressed: () => _openFileLocation(filePath),
+              child: Text('Open', style: TextStyle(color: Colors.white)),
+            ),
+          );
+        } catch (e) {
+          // Close loading dialog
+          Get.back();
+
+          print('Error saving file: $e');
+          Get.snackbar(
+            'Error',
+            'Failed to save membership card: ${e.toString()}',
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+            duration: Duration(seconds: 5),
+          );
+        }
       } else {
         Get.back();
         Get.snackbar(
@@ -483,6 +508,7 @@ class _QRCardViewState extends State<QRCardView> {
         );
       }
     } catch (e) {
+      print(e);
       Get.back();
       Get.snackbar(
         'Error',

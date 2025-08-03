@@ -51,7 +51,6 @@ void main() async {
   await GetStorage.init();
   final languageService = Get.put(LanguageService());
   final themeService = Get.put(ThemeService());
-  final authController = Get.put(AuthController());
   // Local Notifications Setup
   const AndroidInitializationSettings initializationSettingsAndroid =
       AndroidInitializationSettings('@mipmap/ic_launcher');

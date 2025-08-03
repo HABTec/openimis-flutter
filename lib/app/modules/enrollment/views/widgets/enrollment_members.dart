@@ -141,7 +141,7 @@ class EnrollmentDetailsPage extends StatelessWidget {
                 }),
               ],
             ),
-            Contribution(enrollmentController)
+            const Contribution()
           ],
         ),
       ),

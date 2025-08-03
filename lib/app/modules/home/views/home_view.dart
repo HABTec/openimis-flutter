@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:heroicons/heroicons.dart';
+import 'package:openimis_app/app/modules/auth/controllers/auth_controller.dart';
+import 'package:openimis_app/app/routes/app_pages.dart';
 import '../../../core/theme/app_theme.dart';
 import '../controllers/home_controller.dart';
 
@@ -283,6 +285,14 @@ class HomeView extends GetView<HomeController> {
                   onTap: () {
                     Get.back();
                     _showAboutDialog();
+                  },
+                ),
+                _buildDrawerItem(
+                  icon: HeroIcons.arrowRightOnRectangle,
+                  title: 'Logout',
+                  onTap: () {
+                    AuthController.to.logout();
+                    Get.offAllNamed(Routes.LOGIN);
                   },
                 ),
               ],

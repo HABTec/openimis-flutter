@@ -2,11 +2,18 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:get/get_state_manager/get_state_manager.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../../../data/remote/services/enrollment/reference_data_service.dart';
 import '../../../data/remote/services/enrollment/enhanced_insuree_service.dart';
+import '../../../data/remote/services/enrollment/product_service.dart';
+import '../../../data/remote/services/enrollment/policy_service.dart';
+import '../../../data/remote/services/enrollment/contribution_service.dart';
+import '../../../data/local/services/enhanced_contribution_service.dart';
 import '../../../data/remote/dto/enrollment/insuree_dto.dart';
+import '../../../data/remote/dto/enrollment/product_dto.dart';
+import '../../../data/remote/dto/enrollment/policy_dto.dart';
 import '../../../data/remote/dto/enrollment/profession_dto.dart';
 import '../../../data/remote/dto/enrollment/education_dto.dart';
 import '../../../data/remote/dto/enrollment/relation_dto.dart';
@@ -22,12 +29,17 @@ import 'package:intl/intl.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/app_theme.dart';
+import '../views/widgets/qr_card_view.dart';
 
 class EnhancedEnrollmentController extends GetxController {
   // Services
   final ReferenceDataService _referenceService = getIt<ReferenceDataService>();
   final EnhancedInsureeService _insureeService =
       getIt<EnhancedInsureeService>();
+  final PolicyService _policyService = getIt<PolicyService>();
+  final ContributionService _contributionService = getIt<ContributionService>();
+  final EnhancedContributionService _enhancedContributionService =
+      getIt<EnhancedContributionService>();
   final EnhancedDatabaseHelper _dbHelper = getIt<EnhancedDatabaseHelper>();
   final Uuid _uuid = const Uuid();
 
@@ -122,6 +134,25 @@ class EnhancedEnrollmentController extends GetxController {
   final Rx<FamilyDto?> currentFamily = Rx<FamilyDto?>(null);
   final RxList<InsureeDto> familyMembers = <InsureeDto>[].obs;
 
+  // Current policy and contribution
+  final Rx<PolicyDto?> currentPolicy = Rx<PolicyDto?>(null);
+
+  // Product and membership selection
+  final RxList<ProductDto> availableProducts = <ProductDto>[].obs;
+  final RxList<MembershipTypeDto> availableMembershipTypes =
+      <MembershipTypeDto>[].obs;
+  final Rx<String> selectedProductId = ''.obs;
+  final Rx<String> selectedMembershipTypeId = ''.obs;
+  final Rx<MembershipTypeDto?> selectedMembershipType =
+      Rx<MembershipTypeDto?>(null);
+
+  // Enhanced contribution calculation
+  final Rx<ContributionBreakdown?> currentContributionBreakdown =
+      Rx<ContributionBreakdown?>(null);
+
+  // Dynamic membership type selection
+  final Rx<String> selectedAreaType = ''.obs;
+
   // Payment related observables
   final RxBool showPaymentSection = false.obs;
   final RxString paymentMethod = 'online'.obs;
@@ -177,6 +208,7 @@ class EnhancedEnrollmentController extends GetxController {
     _initConnectivityListener();
     _checkReferenceDataAndInit();
     _setupLocationListeners();
+    _setDefaultTestValues();
   }
 
   void _initConnectivityListener() {
@@ -222,6 +254,113 @@ class EnhancedEnrollmentController extends GetxController {
         selectedVillageId.value = '';
       }
     });
+  }
+
+  /// Sets default test values for easier testing
+  void _setDefaultTestValues() {
+    // Family Head Information
+    headFirstNameController.text = 'Abebe';
+    headLastNameController.text = 'Kebede';
+    headPhoneController.text = '+251911123456';
+    headEmailController.text = 'abebe.kebede@email.com';
+    headPassportController.text = 'ET123456789';
+    headDobController.text = '1985-03-15';
+
+    // Set default observable values
+    headGender.value = 'M';
+    headMaritalStatus.value = 'M'; // Married
+    headIdType.value = 'D'; // Default ID type
+    headProfessionId.value = 1; // Will be set to first available profession
+    headEducationId.value = 1; // Will be set to first available education
+
+    // Family Details
+    addressController.text = 'Kebele 01, House No. 123, Addis Ababa';
+    familyTypeId.value = 'H'; // Household
+    confirmationTypeId.value = 'A'; // Default confirmation type
+    confirmationNumberController.text = 'CONF123456';
+
+    // Member form defaults (for when adding members)
+    memberFirstNameController.text = 'Sara';
+    memberLastNameController.text = 'Kebede';
+    memberPhoneController.text = '+251922654321';
+    memberEmailController.text = 'sara.kebede@email.com';
+    memberPassportController.text = 'ET987654321';
+    memberDobController.text = '1990-07-20';
+
+    memberGender.value = 'F';
+    memberMaritalStatus.value = 'S'; // Single
+    memberIdType.value = 'D';
+    memberProfessionId.value = 1;
+    memberEducationId.value = 1;
+    memberRelationshipId.value = 1; // Will be set to first available relation
+
+    // CHF ID Format
+    chfIdFormat.value = 1;
+
+    // Payment defaults
+    paymentMethod.value = 'offline';
+    isOfflinePayment.value = true;
+    transactionId.value = 'TXN123456789';
+
+    // Poverty status
+    povertyStatus.value = false;
+  }
+
+  /// Calculate contribution using the enhanced formula
+  void calculateEnhancedContribution() async {
+    if (selectedMembershipType.value == null) return;
+
+    try {
+      // Prepare family members for calculation
+      final List<FamilyMemberForCalculation> members = [];
+
+      // Add head
+      final headAge = _calculateAge(headDobController.text);
+      members.add(FamilyMemberForCalculation(
+        name: '${headFirstNameController.text} ${headLastNameController.text}',
+        disabled: false,
+        age: headAge,
+        isHead: true, // Could be determined from form data
+      ));
+
+      // Add family members
+      for (final member in familyMembers) {
+        final memberAge = _calculateAge(member.dob ?? '');
+        members.add(FamilyMemberForCalculation(
+          name: '${member.lastName}',
+          age: memberAge,
+          isHead: false,
+          disabled: false, // Could be determined from member data
+        ));
+      }
+
+      final breakdown =
+          await _enhancedContributionService.calculateContribution(
+        familyMembers: members,
+        membershipTypeId: selectedMembershipType.value!.id!,
+      );
+
+      currentContributionBreakdown.value = breakdown.breakdown;
+      calculatedContribution.value = breakdown.breakdown!.totalAmount;
+    } catch (e) {
+      print('Error calculating enhanced contribution: $e');
+    }
+  }
+
+  /// Calculate age from date of birth string
+  int _calculateAge(String dobString) {
+    try {
+      final dob = DateTime.parse(dobString);
+      final now = DateTime.now();
+      int age = now.year - dob.year;
+      if (now.month < dob.month ||
+          (now.month == dob.month && now.day < dob.day)) {
+        age--;
+      }
+      return age;
+    } catch (e) {
+      return 0;
+    }
   }
 
   void _filterDistrictsByRegion(String regionId) {
@@ -340,6 +479,7 @@ class EnhancedEnrollmentController extends GetxController {
         _referenceService.getLocationsByType('D'), // Districts
         _referenceService.getLocationsByType('W'), // Municipalities
         _referenceService.getLocationsByType('V'), // Villages
+        _referenceService.getProducts(),
       ];
 
       final results = await Future.wait(futures);
@@ -353,7 +493,17 @@ class EnhancedEnrollmentController extends GetxController {
       districts.assignAll(results[6] as List<FlatLocationDto>);
       municipalities.assignAll(results[7] as List<FlatLocationDto>);
       villages.assignAll(results[8] as List<FlatLocationDto>);
-
+      availableProducts.assignAll(results[9] as List<ProductDto>);
+      availableMembershipTypes.assignAll((results[9] as List<ProductDto>)
+          .expand((product) => product.membershipTypes ?? [])
+          .toList()
+          .fold<Map<String, MembershipTypeDto>>({}, (map, type) {
+            map[type.id] = type;
+            return map;
+          })
+          .values
+          .toList());
+      selectedProductId.value = availableProducts.first.id ?? '';
       print("Loaded locations:");
       print("Regions: ${regions.length}");
       print("Districts: ${districts.length}");
@@ -463,43 +613,6 @@ class EnhancedEnrollmentController extends GetxController {
     return 1; // Default admin ID
   }
 
-  // Contribution Calculation
-  Future<void> calculateContribution() async {
-    try {
-      // Basic contribution calculation logic
-      double baseRate = 50.0; // Base rate
-      double memberRate = 25.0; // Per member rate
-
-      // Adjust based on membership type and level
-      if (membershipType.value == 'Indigent') {
-        baseRate = 0.0; // Free for indigent
-        memberRate = 0.0;
-      } else if (membershipLevel.value == 'Level 2') {
-        baseRate *= 1.5; // 50% increase for Level 2
-        memberRate *= 1.5;
-      }
-
-      // Area type adjustment
-      if (areaType.value == 'Rural') {
-        baseRate *= 0.8; // 20% discount for rural
-        memberRate *= 0.8;
-      }
-
-      // Poverty status discount
-      if (povertyStatus.value) {
-        baseRate *= 0.5; // 50% discount for poverty
-        memberRate *= 0.5;
-      }
-
-      // Calculate total (base + members)
-      final memberCount = familyMembers.length + 1; // +1 for head
-      calculatedContribution.value =
-          baseRate + (memberRate * (memberCount - 1));
-    } catch (e) {
-      SnackBars.failure('Error', 'Failed to calculate contribution: $e');
-    }
-  }
-
   // Step Navigation
   void nextStep() {
     if (currentStep.value < totalSteps) {
@@ -507,7 +620,7 @@ class EnhancedEnrollmentController extends GetxController {
         currentStep.value++;
         if (currentStep.value == 4) {
           // Payment step
-          calculateContribution();
+          calculateEnhancedContribution();
           showPaymentSection.value = true;
         }
       }
@@ -641,7 +754,7 @@ class EnhancedEnrollmentController extends GetxController {
       _clearMemberForm();
 
       // Recalculate contribution
-      calculateContribution();
+      calculateEnhancedContribution();
 
       SnackBars.success('Success', 'Family member added successfully');
     } catch (e) {
@@ -653,7 +766,7 @@ class EnhancedEnrollmentController extends GetxController {
   void removeFamilyMember(int index) {
     if (index >= 0 && index < familyMembers.length) {
       familyMembers.removeAt(index);
-      calculateContribution();
+      calculateEnhancedContribution();
       SnackBars.success('Success', 'Family member removed');
     }
   }
@@ -749,6 +862,7 @@ class EnhancedEnrollmentController extends GetxController {
       // Add family members
       for (final member in familyMembers) {
         member.localFamilyId = localFamilyId;
+        member.familyId = localFamilyId;
         final memberResult = await _insureeService.createInsuree(member);
         if (memberResult.error) {
           SnackBars.warning(
@@ -756,15 +870,21 @@ class EnhancedEnrollmentController extends GetxController {
         }
       }
 
-      // Handle payment
-      if (calculatedContribution.value > 0 && !isOfflinePayment.value) {
-        // Handle online payment
-        await _handleOnlinePayment();
-      } else if (calculatedContribution.value > 0 && isOfflinePayment.value) {
-        // Handle offline payment
-        await processOfflinePayment(fromRegistrationFlow: true);
+      // Create policy after family creation
+      await _createPolicyForFamily(localFamilyId);
+
+      // Handle payment and contribution creation
+      if (currentContributionBreakdown.value != null &&
+          currentContributionBreakdown.value!.totalAmount > 0) {
+        if (!isOfflinePayment.value) {
+          // Handle online payment and contribution
+          await _handleOnlinePaymentAndContribution();
+        } else {
+          // Handle offline payment and contribution
+          await _handleOfflinePaymentAndContribution();
+        }
       } else {
-        // No payment required or indigent
+        // No payment required
         _showSuccessPage();
       }
     } catch (e) {
@@ -783,6 +903,116 @@ class EnhancedEnrollmentController extends GetxController {
   Future<void> _handleOfflinePayment() async {
     // For offline payment, show invoice and mark as pending
     _showOfflineInvoice();
+  }
+
+  // Create policy for the family
+  Future<void> _createPolicyForFamily(int familyId) async {
+    if (selectedProductId.value.isEmpty) {
+      SnackBars.warning('Warning', 'No product selected for policy creation');
+      return;
+    }
+
+    try {
+      final now = DateTime.now();
+      final enrollDate = now.toIso8601String().split('T')[0];
+      final startDate = enrollDate;
+
+      // Calculate expiry date using product's enrolment period or default
+      final selectedProduct = selectedMembershipType.value?.productDetails;
+      final expiryDate = _policyService
+          .calculateExpiryDate(selectedProduct?.enrolmentPeriodEndDate);
+
+      final policyResult = await _policyService.createPolicy(
+        enrollDate: enrollDate,
+        startDate: startDate,
+        expiryDate: expiryDate,
+        value: currentContributionBreakdown.value?.totalAmount
+                .toStringAsFixed(2) ??
+            '0.00',
+        productId: int.parse(selectedProductId.value),
+        familyId: familyId,
+        officerId: _getAdminId(),
+        tryOnlineFirst: isOnline.value,
+      );
+
+      if (!policyResult.error) {
+        currentPolicy.value = policyResult.data as PolicyDto;
+        SnackBars.success('Success', 'Policy created successfully');
+      } else {
+        SnackBars.warning(
+            'Warning', 'Policy creation failed: ${policyResult.message}');
+      }
+    } catch (e) {
+      SnackBars.failure('Error', 'Failed to create policy: $e');
+    }
+  }
+
+  // Handle online payment and contribution creation
+  Future<void> _handleOnlinePaymentAndContribution() async {
+    if (currentPolicy.value == null) {
+      SnackBars.failure('Error', 'Policy must be created before payment');
+      return;
+    }
+
+    try {
+      // Generate receipt number
+      final receiptNumber = _contributionService.generateReceiptNumber();
+      final payDate = DateTime.now().toIso8601String().split('T')[0];
+      final totalAmount =
+          currentContributionBreakdown.value!.totalAmount.toStringAsFixed(2);
+
+      // Create contribution
+      final contributionResult = await _contributionService.createContribution(
+        receipt: receiptNumber,
+        payDate: payDate,
+        amount: totalAmount,
+        policyUuid: currentPolicy.value!.uuid!,
+        tryOnlineFirst: true,
+      );
+
+      if (!contributionResult.error) {
+        SnackBars.success('Success', 'Payment processed successfully');
+        _showSuccessPage();
+      } else {
+        SnackBars.failure('Payment Failed', contributionResult.message);
+      }
+    } catch (e) {
+      SnackBars.failure('Error', 'Failed to process payment: $e');
+    }
+  }
+
+  // Handle offline payment and contribution creation
+  Future<void> _handleOfflinePaymentAndContribution() async {
+    if (currentPolicy.value == null) {
+      SnackBars.failure('Error', 'Policy must be created before payment');
+      return;
+    }
+
+    try {
+      // Create offline contribution record
+      final receiptNumber = _contributionService.generateReceiptNumber();
+      final payDate = DateTime.now().toIso8601String().split('T')[0];
+      final totalAmount =
+          currentContributionBreakdown.value!.totalAmount.toStringAsFixed(2);
+
+      // Create contribution locally (will sync later)
+      final contributionResult = await _contributionService.createContribution(
+        receipt: receiptNumber,
+        payDate: payDate,
+        amount: totalAmount,
+        policyUuid: currentPolicy.value!.uuid!,
+        tryOnlineFirst: false, // Force offline
+      );
+
+      if (!contributionResult.error) {
+        _showOfflineInvoice();
+      } else {
+        SnackBars.failure('Error',
+            'Failed to create offline payment record: ${contributionResult.message}');
+      }
+    } catch (e) {
+      SnackBars.failure('Error', 'Failed to process offline payment: $e');
+    }
   }
 
   void _showOfflineInvoice() {
@@ -1202,42 +1432,42 @@ class FamilyRegistrationSuccessView extends StatelessWidget {
             children: [
               Icon(
                 Icons.check_circle,
-                size: 100,
+                size: 60,
                 color: Colors.green,
               ),
               SizedBox(height: 24),
               Text(
                 'Family Registered Successfully!',
                 style: TextStyle(
-                  fontSize: 24,
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: Colors.green.shade700,
                 ),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 16),
+              SizedBox(height: 4),
               Text(
                 'Family Head: ${family.headInsuree?.otherNames ?? 'N/A'} ${family.headInsuree?.lastName ?? 'N/A'}',
-                style: TextStyle(fontSize: 18),
+                style: TextStyle(fontSize: 14),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 8),
+              SizedBox(height: 4),
               Text(
                 'CHF ID: ${family.headInsuree?.chfId ?? 'Pending'}',
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 14,
                   fontWeight: FontWeight.w500,
                   color: Colors.blue.shade600,
                 ),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 8),
+              SizedBox(height: 4),
               Text(
                 'Total Members: $memberCount',
-                style: TextStyle(fontSize: 16),
+                style: TextStyle(fontSize: 14),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 32),
+              SizedBox(height: 16),
               Container(
                 padding: EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -1250,7 +1480,7 @@ class FamilyRegistrationSuccessView extends StatelessWidget {
                     Icon(Icons.info, color: Colors.blue.shade600),
                     SizedBox(height: 8),
                     Text(
-                      'Your family has been registered offline and will be synced to the server when internet connection is available.',
+                      'If you are offline, your family has been registered offline and will be synced to the server when internet connection is available.',
                       style: TextStyle(
                         color: Colors.blue.shade700,
                         fontSize: 14,
@@ -1260,24 +1490,62 @@ class FamilyRegistrationSuccessView extends StatelessWidget {
                   ],
                 ),
               ),
-              SizedBox(height: 32),
-              ElevatedButton(
-                onPressed: () {
-                  Get.offAllNamed('/home');
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: Text(
-                  'Go to Home',
-                  style: TextStyle(fontSize: 16),
+              SizedBox(height: 16),
+
+              // QR Card and Membership Actions
+              Container(
+                width: double.infinity,
+                child: Column(
+                  children: [
+                    // Generate QR Code & Membership Card Button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _showQRCard(),
+                        icon: Icon(Icons.qr_code, size: 24),
+                        label: Text(
+                          'Generate QR Card & Membership Card',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue.shade600,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    SizedBox(height: 12),
+
+                    // Go to Home Button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Get.offAllNamed('/home');
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: Text(
+                          'Go to Home',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
+
               SizedBox(height: 16),
               TextButton(
                 onPressed: () {
@@ -1296,6 +1564,53 @@ class FamilyRegistrationSuccessView extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  void _showQRCard() {
+    final chfId = family.headInsuree?.chfId ?? 'PENDING';
+    final memberName =
+        '${family.headInsuree?.otherNames ?? ''} ${family.headInsuree?.lastName ?? ''}'
+            .trim();
+
+    if (chfId.isEmpty || chfId == 'PENDING') {
+      Get.snackbar(
+        'Information',
+        'CHF ID is not yet available. Please wait for the family to be processed.',
+        backgroundColor: Colors.orange,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    // Show loading dialog while generating QR card
+    Get.dialog(
+      AlertDialog(
+        title: Row(
+          children: [
+            CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue.shade600),
+            ),
+            SizedBox(width: 16),
+            Text('Generating QR Card'),
+          ],
+        ),
+        content: Text('Creating your CBHI membership card...'),
+      ),
+      barrierDismissible: false,
+    );
+
+    // Simulate QR generation delay
+    Future.delayed(Duration(seconds: 2), () {
+      Get.back(); // Close loading dialog
+
+      // Navigate to QR card view
+      Get.to(() => QRCardView(
+            chfid: chfId,
+            memberName: memberName,
+            receiptData: null, // Will be null for offline registrations
+          ));
+    });
   }
 }
 

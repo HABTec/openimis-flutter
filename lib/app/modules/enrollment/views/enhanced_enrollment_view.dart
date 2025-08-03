@@ -683,20 +683,6 @@ class EnhancedEnrollmentView extends StatelessWidget {
 
                   SizedBox(height: 12.h),
 
-                  // Poverty Status
-                  Obx(() => SwitchListTile(
-                        title: Text('Poverty Status'),
-                        subtitle:
-                            Text('Select if family is below poverty line'),
-                        value: controller.povertyStatus.value,
-                        onChanged: (value) {
-                          controller.povertyStatus.value = value;
-                          controller.calculateContribution();
-                        },
-                      )),
-
-                  SizedBox(height: 12.h),
-
                   // Confirmation Type
                   Obx(() => DropdownButtonFormField<String>(
                         decoration: InputDecoration(
@@ -767,72 +753,85 @@ class EnhancedEnrollmentView extends StatelessWidget {
                   ),
                   SizedBox(height: 12.h),
 
-                  // Membership Type
-                  Obx(() => DropdownButtonFormField<String>(
-                        decoration: InputDecoration(
-                          labelText: 'Membership Type',
-                          border: OutlineInputBorder(),
-                        ),
-                        value: controller.membershipType.value,
-                        items: [
-                          DropdownMenuItem(
-                              value: 'Paying', child: Text('Paying')),
-                          DropdownMenuItem(
-                              value: 'Indigent', child: Text('Indigent')),
-                        ],
-                        onChanged: (value) {
-                          if (value != null) {
-                            controller.membershipType.value = value;
-                            controller.calculateContribution();
-                          }
-                        },
-                      )),
+                  // Area Type (Level Type)
+                  Obx(() {
+                    final levelTypes = controller.availableMembershipTypes
+                        .map((mt) => mt.levelType)
+                        .where((lt) => lt != null)
+                        .toSet()
+                        .toList();
+
+                    return DropdownButtonFormField<String>(
+                      decoration: InputDecoration(
+                        labelText: 'Area Type',
+                        border: OutlineInputBorder(),
+                      ),
+                      value: controller.selectedAreaType.value.isEmpty
+                          ? null
+                          : controller.selectedAreaType.value,
+                      items: levelTypes.map((levelType) {
+                        return DropdownMenuItem(
+                          value: levelType,
+                          child: Text(levelType!),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          controller.selectedAreaType.value = value;
+                        }
+                      },
+                    );
+                  }),
 
                   SizedBox(height: 12.h),
 
-                  // Membership Level
-                  Obx(() => DropdownButtonFormField<String>(
-                        decoration: InputDecoration(
-                          labelText: 'Membership Level',
-                          border: OutlineInputBorder(),
-                        ),
-                        value: controller.membershipLevel.value,
-                        items: [
-                          DropdownMenuItem(
-                              value: 'Level 1', child: Text('Level 1')),
-                          DropdownMenuItem(
-                              value: 'Level 2', child: Text('Level 2')),
-                        ],
-                        onChanged: (value) {
-                          if (value != null) {
-                            controller.membershipLevel.value = value;
-                            controller.calculateContribution();
-                          }
-                        },
-                      )),
+                  // Membership Level (Level Index)
+                  Obx(() {
+                    final filteredTypes = controller.availableMembershipTypes
+                        .where((mt) =>
+                            mt.levelType == controller.selectedAreaType.value)
+                        .toList();
 
-                  SizedBox(height: 12.h),
-
-                  // Area Type
-                  Obx(() => DropdownButtonFormField<String>(
-                        decoration: InputDecoration(
-                          labelText: 'Area Type',
-                          border: OutlineInputBorder(),
+                    if (filteredTypes.isEmpty) {
+                      return Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade300),
                         ),
-                        value: controller.areaType.value,
-                        items: [
-                          DropdownMenuItem(
-                              value: 'Urban', child: Text('Urban')),
-                          DropdownMenuItem(
-                              value: 'Rural', child: Text('Rural')),
-                        ],
-                        onChanged: (value) {
-                          if (value != null) {
-                            controller.areaType.value = value;
-                            controller.calculateContribution();
-                          }
-                        },
-                      )),
+                        child: Text(
+                          'Please select an area type first',
+                          style: TextStyle(color: Colors.grey.shade600),
+                        ),
+                      );
+                    }
+
+                    return DropdownButtonFormField<String>(
+                      decoration: InputDecoration(
+                        labelText: 'Membership Level',
+                        border: OutlineInputBorder(),
+                      ),
+                      value: controller.selectedMembershipTypeId.value.isEmpty
+                          ? null
+                          : controller.selectedMembershipTypeId.value,
+                      items: filteredTypes.map((membershipType) {
+                        final displayName =
+                            'Level ${membershipType.levelIndex} - ${membershipType.price} ETB';
+                        return DropdownMenuItem(
+                          value: membershipType.id,
+                          child: Text(displayName),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          controller.selectedMembershipType.value = controller
+                              .availableMembershipTypes
+                              .firstWhere((mt) => mt.id == value);
+                        }
+                      },
+                    );
+                  }),
                 ],
               ),
             ),
@@ -1202,6 +1201,67 @@ class EnhancedEnrollmentView extends StatelessWidget {
             'Payment & Contribution',
             style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold),
           ),
+
+          SizedBox(height: 12.h),
+
+          // Enhanced Contribution Display
+          Obx(() {
+            if (controller.currentContributionBreakdown.value != null) {
+              final breakdown = controller.currentContributionBreakdown.value!;
+              return Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Contribution Summary',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Colors.blue.shade800,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                        'Premium Adult Rate: ${breakdown.premiumAdultRate.toStringAsFixed(2)} ETB'),
+                    SizedBox(height: 8),
+                    Text('Member Breakdown:',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    ...breakdown.memberBreakdowns.map((member) => Padding(
+                          padding: EdgeInsets.only(left: 16),
+                          child: Text(
+                              '${member.memberName}: ${member.amount.toStringAsFixed(2)} ETB (${member.reason})'),
+                        )),
+                    SizedBox(height: 8),
+                    Text('Summary:',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text(
+                        'Total Member Contributions: ${breakdown.memberContributions.toStringAsFixed(2)} ETB'),
+                    Text(
+                        'Registration Fee: ${breakdown.registrationFee.toStringAsFixed(2)} ETB'),
+                    Text(
+                        'Lump Sum: ${breakdown.lumpSum.toStringAsFixed(2)} ETB'),
+                    Divider(),
+                    Text(
+                      'Total: ${breakdown.totalAmount.toStringAsFixed(2)} ETB',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Colors.green.shade800,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return SizedBox.shrink();
+          }),
           SizedBox(height: 16.h),
 
           // Contribution Summary
@@ -1261,19 +1321,6 @@ class EnhancedEnrollmentView extends StatelessWidget {
                       Obx(() => Text(controller.areaType.value)),
                     ],
                   ),
-                  Obx(() {
-                    if (controller.povertyStatus.value) {
-                      return Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Poverty Discount:'),
-                          Text('50% Applied',
-                              style: TextStyle(color: Colors.green)),
-                        ],
-                      );
-                    }
-                    return SizedBox.shrink();
-                  }),
                   Divider(),
                   Obx(() => Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1668,7 +1715,7 @@ class EnhancedEnrollmentView extends StatelessWidget {
                             SizedBox(
                               width: 20.w,
                               height: 20.w,
-                              child: CircularProgressIndicator(
+                              child: const CircularProgressIndicator(
                                 strokeWidth: 2,
                                 valueColor:
                                     AlwaysStoppedAnimation<Color>(Colors.white),

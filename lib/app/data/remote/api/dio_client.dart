@@ -20,6 +20,8 @@ class DioClient {
       ..interceptors.add(InterceptorsWrapper(
         onRequest: (options, handler) {
           // Add stored cookies to requests
+          print("cookies: ${getCookies()}");
+          print("csrfToken: ${getCSRFToken()}");
           final cookies = getCookies();
           if (cookies.isNotEmpty) {
             options.headers['Cookie'] = cookies;
@@ -30,7 +32,7 @@ class DioClient {
           if (csrfToken.isNotEmpty) {
             options.headers['X-CSRFToken'] = csrfToken;
           }
-
+          print("options: ${options.headers}");
           handler.next(options);
         },
         onResponse: (response, handler) {
