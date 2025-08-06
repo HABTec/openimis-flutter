@@ -29,6 +29,11 @@ class ProductService {
                 id
                 code
                 name
+                lumpSum
+                premiumAdult
+                cardReplacementFee
+                enrolmentPeriodStartDate
+                enrolmentPeriodEndDate
                 membershipTypes {
                   id
                   region
@@ -36,20 +41,6 @@ class ProductService {
                   levelType
                   levelIndex
                   price
-                  products {
-                    edges {
-                      node {
-                        id
-                        name
-                        lumpSum
-                        premiumAdult
-                        ageMaximal
-                        cardReplacementFee
-                        enrolmentPeriodStartDate
-                        enrolmentPeriodEndDate
-                      }
-                    }
-                  }
                 }
                 enrolmentPeriodEndDate
                 enrolmentPeriodStartDate
@@ -124,8 +115,6 @@ class ProductService {
           // Insert membership types
           if (product.membershipTypes != null) {
             for (final membershipType in product.membershipTypes!) {
-              final productDetails = membershipType.productDetails;
-
               await db.insert('membership_types', {
                 'id': membershipType.id,
                 'product_id': product.id,
@@ -134,13 +123,12 @@ class ProductService {
                 'level_type': membershipType.levelType,
                 'level_index': membershipType.levelIndex,
                 'price': membershipType.price,
-                'product_node_id': productDetails?.id,
-                'product_node_name': productDetails?.name,
-                'product_lump_sum': productDetails?.lumpSum,
-                'product_premium_adult': productDetails?.premiumAdult,
-                'product_age_maximal': productDetails?.ageMaximal,
-                'product_card_replacement_fee':
-                    productDetails?.cardReplacementFee,
+                'product_node_id': product.id,
+                'product_node_name': product.name,
+                'product_lump_sum': product.lumpSum,
+                'product_premium_adult': product.premiumAdult,
+                'product_age_maximal': product.ageMaximal,
+                'product_card_replacement_fee': product.cardReplacementFee,
                 'last_synced': DateTime.now().toIso8601String(),
               });
             }
@@ -177,20 +165,6 @@ class ProductService {
             levelType: mtMap['level_type'],
             levelIndex: mtMap['level_index'],
             price: mtMap['price'],
-            products: ProductEdgesDto(
-              edges: [
-                ProductEdgeDto(
-                  node: ProductNodeDto(
-                    id: mtMap['product_node_id'],
-                    name: mtMap['product_node_name'],
-                    lumpSum: mtMap['product_lump_sum'],
-                    premiumAdult: mtMap['product_premium_adult'],
-                    ageMaximal: mtMap['product_age_maximal'],
-                    cardReplacementFee: mtMap['product_card_replacement_fee'],
-                  ),
-                ),
-              ],
-            ),
           );
         }).toList();
 
@@ -263,20 +237,6 @@ class ProductService {
           levelType: map['level_type'],
           levelIndex: map['level_index'],
           price: map['price'],
-          products: ProductEdgesDto(
-            edges: [
-              ProductEdgeDto(
-                node: ProductNodeDto(
-                  id: map['product_node_id'],
-                  name: map['product_node_name'],
-                  lumpSum: map['product_lump_sum'],
-                  premiumAdult: map['product_premium_adult'],
-                  ageMaximal: map['product_age_maximal'],
-                  cardReplacementFee: map['product_card_replacement_fee'],
-                ),
-              ),
-            ],
-          ),
         );
       }).toList();
     } catch (e) {
@@ -306,20 +266,6 @@ class ProductService {
         levelType: map['level_type'],
         levelIndex: map['level_index'],
         price: map['price'],
-        products: ProductEdgesDto(
-          edges: [
-            ProductEdgeDto(
-              node: ProductNodeDto(
-                id: map['product_node_id'],
-                name: map['product_node_name'],
-                lumpSum: map['product_lump_sum'],
-                premiumAdult: map['product_premium_adult'],
-                ageMaximal: map['product_age_maximal'],
-                cardReplacementFee: map['product_card_replacement_fee'],
-              ),
-            ),
-          ],
-        ),
       );
     } catch (e) {
       throw Exception('Failed to get membership type: $e');

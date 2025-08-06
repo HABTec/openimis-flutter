@@ -87,6 +87,21 @@ class ProductDto implements IDto {
     map['enrolmentPeriodEndDate'] = enrolmentPeriodEndDate;
     return map;
   }
+
+  // Helper method to get premium adult amount
+  double get premiumAdultAmount {
+    return double.tryParse(premiumAdult ?? '0') ?? 0.0;
+  }
+
+  // Helper method to get lump sum amount
+  double get lumpSumAmount {
+    return double.tryParse(lumpSum ?? '0') ?? 0.0;
+  }
+
+  // Helper method to get card replacement fee
+  double get cardReplacementFeeAmount {
+    return double.tryParse(cardReplacementFee ?? '0') ?? 0.0;
+  }
 }
 
 class MembershipTypeDto implements IDto {
@@ -97,7 +112,6 @@ class MembershipTypeDto implements IDto {
     this.levelType,
     this.levelIndex,
     this.price,
-    this.products,
   });
 
   MembershipTypeDto.fromJson(Map<String, dynamic> json) {
@@ -107,9 +121,6 @@ class MembershipTypeDto implements IDto {
     levelType = json['levelType'];
     levelIndex = json['levelIndex'];
     price = json['price'];
-    products = json['products'] != null
-        ? ProductEdgesDto.fromJson(json['products'])
-        : null;
   }
 
   String? id;
@@ -118,7 +129,6 @@ class MembershipTypeDto implements IDto {
   String? levelType;
   int? levelIndex;
   String? price;
-  ProductEdgesDto? products;
 
   MembershipTypeDto copyWith({
     String? id,
@@ -127,7 +137,6 @@ class MembershipTypeDto implements IDto {
     String? levelType,
     int? levelIndex,
     String? price,
-    ProductEdgesDto? products,
   }) =>
       MembershipTypeDto(
         id: id ?? this.id,
@@ -136,7 +145,6 @@ class MembershipTypeDto implements IDto {
         levelType: levelType ?? this.levelType,
         levelIndex: levelIndex ?? this.levelIndex,
         price: price ?? this.price,
-        products: products ?? this.products,
       );
 
   Map<String, dynamic> toJson() {
@@ -147,158 +155,12 @@ class MembershipTypeDto implements IDto {
     map['levelType'] = levelType;
     map['levelIndex'] = levelIndex;
     map['price'] = price;
-    if (products != null) {
-      map['products'] = products!.toJson();
-    }
     return map;
-  }
-
-  // Helper method to get product details
-  ProductNodeDto? get productDetails {
-    return products?.edges?.isNotEmpty == true
-        ? products!.edges!.first.node
-        : null;
-  }
-
-  // Helper method to get premium adult amount
-  double get premiumAdultAmount {
-    final productDetail = productDetails;
-    return double.tryParse(productDetail?.premiumAdult ?? '0') ?? 0.0;
-  }
-
-  // Helper method to get lump sum amount
-  double get lumpSumAmount {
-    final productDetail = productDetails;
-    return double.tryParse(productDetail?.lumpSum ?? '0') ?? 0.0;
   }
 
   // Helper method to get registration fee (price)
   double get registrationFee {
     return double.tryParse(price ?? '0') ?? 0.0;
-  }
-}
-
-class ProductEdgesDto implements IDto {
-  ProductEdgesDto({this.edges});
-
-  ProductEdgesDto.fromJson(Map<String, dynamic> json) {
-    if (json['edges'] != null) {
-      edges = <ProductEdgeDto>[];
-      json['edges'].forEach((v) {
-        edges!.add(ProductEdgeDto.fromJson(v));
-      });
-    }
-  }
-
-  List<ProductEdgeDto>? edges;
-
-  ProductEdgesDto copyWith({
-    List<ProductEdgeDto>? edges,
-  }) =>
-      ProductEdgesDto(
-        edges: edges ?? this.edges,
-      );
-
-  Map<String, dynamic> toJson() {
-    final map = <String, dynamic>{};
-    if (edges != null) {
-      map['edges'] = edges!.map((v) => v.toJson()).toList();
-    }
-    return map;
-  }
-}
-
-class ProductEdgeDto implements IDto {
-  ProductEdgeDto({this.node});
-
-  ProductEdgeDto.fromJson(Map<String, dynamic> json) {
-    node = json['node'] != null ? ProductNodeDto.fromJson(json['node']) : null;
-  }
-
-  ProductNodeDto? node;
-
-  ProductEdgeDto copyWith({
-    ProductNodeDto? node,
-  }) =>
-      ProductEdgeDto(
-        node: node ?? this.node,
-      );
-
-  Map<String, dynamic> toJson() {
-    final map = <String, dynamic>{};
-    if (node != null) {
-      map['node'] = node!.toJson();
-    }
-    return map;
-  }
-}
-
-class ProductNodeDto implements IDto {
-  ProductNodeDto({
-    this.id,
-    this.name,
-    this.lumpSum,
-    this.premiumAdult,
-    this.ageMaximal,
-    this.cardReplacementFee,
-    this.enrolmentPeriodStartDate,
-    this.enrolmentPeriodEndDate,
-  });
-
-  ProductNodeDto.fromJson(Map<String, dynamic> json) {
-    id = json['id'];
-    name = json['name'];
-    lumpSum = json['lumpSum'];
-    premiumAdult = json['premiumAdult'];
-    ageMaximal = json['ageMaximal'];
-    cardReplacementFee = json['cardReplacementFee'];
-    enrolmentPeriodStartDate = json['enrolmentPeriodStartDate'];
-    enrolmentPeriodEndDate = json['enrolmentPeriodEndDate'];
-  }
-
-  String? id;
-  String? name;
-  String? lumpSum;
-  String? premiumAdult;
-  int? ageMaximal;
-  String? cardReplacementFee;
-  String? enrolmentPeriodStartDate;
-  String? enrolmentPeriodEndDate;
-
-  ProductNodeDto copyWith({
-    String? id,
-    String? name,
-    String? lumpSum,
-    String? premiumAdult,
-    int? ageMaximal,
-    String? cardReplacementFee,
-    String? enrolmentPeriodStartDate,
-    String? enrolmentPeriodEndDate,
-  }) =>
-      ProductNodeDto(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        lumpSum: lumpSum ?? this.lumpSum,
-        premiumAdult: premiumAdult ?? this.premiumAdult,
-        ageMaximal: ageMaximal ?? this.ageMaximal,
-        cardReplacementFee: cardReplacementFee ?? this.cardReplacementFee,
-        enrolmentPeriodStartDate:
-            enrolmentPeriodStartDate ?? this.enrolmentPeriodStartDate,
-        enrolmentPeriodEndDate:
-            enrolmentPeriodEndDate ?? this.enrolmentPeriodEndDate,
-      );
-
-  Map<String, dynamic> toJson() {
-    final map = <String, dynamic>{};
-    map['id'] = id;
-    map['name'] = name;
-    map['lumpSum'] = lumpSum;
-    map['premiumAdult'] = premiumAdult;
-    map['ageMaximal'] = ageMaximal;
-    map['cardReplacementFee'] = cardReplacementFee;
-    map['enrolmentPeriodStartDate'] = enrolmentPeriodStartDate;
-    map['enrolmentPeriodEndDate'] = enrolmentPeriodEndDate;
-    return map;
   }
 }
 
