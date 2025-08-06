@@ -30,18 +30,20 @@ class EnhancedContributionService {
             'Membership type not found');
       }
 
-      final productDetails = membershipType.productDetails;
-      if (productDetails == null) {
-        return ContributionCalculationResult.failure(
-            'Product details not found');
+      // Get product details (since membershipType no longer has nested product details,
+      // we need to get the product directly)
+      final products = await _productService.getLocalProducts();
+      if (products.isEmpty) {
+        return ContributionCalculationResult.failure('No products available');
       }
 
+      // Use the first product as it contains the pricing information
+      final product = products.first;
+
       // Get pricing information
-      final premiumAdult =
-          double.tryParse(productDetails.premiumAdult ?? '0') ?? 0.0;
-      final registrationFee =
-          double.tryParse(membershipType.price ?? '0') ?? 0.0;
-      final lumpSum = double.tryParse(productDetails.lumpSum ?? '0') ?? 0.0;
+      final premiumAdult = product.premiumAdultAmount;
+      final registrationFee = membershipType.registrationFee;
+      final lumpSum = product.lumpSumAmount;
 
       // Calculate member contributions
       double memberContributions = 0.0;

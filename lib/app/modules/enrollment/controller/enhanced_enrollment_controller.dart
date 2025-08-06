@@ -142,6 +142,7 @@ class EnhancedEnrollmentController extends GetxController {
   final RxList<MembershipTypeDto> availableMembershipTypes =
       <MembershipTypeDto>[].obs;
   final Rx<String> selectedProductId = ''.obs;
+  final Rx<ProductDto?> selectedProduct = Rx<ProductDto?>(null);
   final Rx<String> selectedMembershipTypeId = ''.obs;
   final Rx<MembershipTypeDto?> selectedMembershipType =
       Rx<MembershipTypeDto?>(null);
@@ -504,6 +505,7 @@ class EnhancedEnrollmentController extends GetxController {
           .values
           .toList());
       selectedProductId.value = availableProducts.first.id ?? '';
+      selectedProduct.value = availableProducts.first;
       print("Loaded locations:");
       print("Regions: ${regions.length}");
       print("Districts: ${districts.length}");
@@ -918,9 +920,9 @@ class EnhancedEnrollmentController extends GetxController {
       final startDate = enrollDate;
 
       // Calculate expiry date using product's enrolment period or default
-      final selectedProduct = selectedMembershipType.value?.productDetails;
+
       final expiryDate = _policyService
-          .calculateExpiryDate(selectedProduct?.enrolmentPeriodEndDate);
+          .calculateExpiryDate(selectedProduct.value?.enrolmentPeriodEndDate);
 
       final policyResult = await _policyService.createPolicy(
         enrollDate: enrollDate,
@@ -1336,6 +1338,269 @@ class EnhancedEnrollmentController extends GetxController {
     receiptPhoto.value = null;
     paymentMethod.value = 'online';
     isOfflinePayment.value = false;
+  }
+
+  // Pick receipt photo for OCR with enhanced options
+  Future<void> pickReceiptPhoto() async {
+    try {
+      // Show dialog to choose source
+      final source = await Get.dialog<ImageSource>(
+        AlertDialog(
+          title: Text('Select Source'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(Icons.camera_alt),
+                title: Text('Take Photo'),
+                onTap: () => Get.back(result: ImageSource.camera),
+              ),
+              ListTile(
+                leading: Icon(Icons.photo_library),
+                title: Text('Choose from Gallery'),
+                onTap: () => Get.back(result: ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (source == null) return;
+
+      // Request appropriate permissions
+      if (source == ImageSource.camera) {
+        final status = await Permission.camera.request();
+        if (!status.isGranted) {
+          throw Exception('Camera permission not granted');
+        }
+      } else {
+        final status = await Permission.storage.request();
+        if (!status.isGranted) {
+          throw Exception('Storage permission not granted');
+        }
+      }
+
+      final XFile? photo = await _picker.pickImage(
+        source: source,
+        imageQuality: 80,
+        maxWidth: 1920,
+        maxHeight: 1080,
+      );
+
+      if (photo != null) {
+        // Compress image before processing
+        final compressedFile = await compressImage(photo);
+        if (compressedFile != null) {
+          receiptPhoto.value = XFile(compressedFile.path);
+          await extractTextFromReceipt(receiptPhoto.value!);
+        } else {
+          receiptPhoto.value = photo;
+          await extractTextFromReceipt(photo);
+        }
+      }
+    } catch (e) {
+      showSnackBar(
+        'Error',
+        'Failed to capture receipt: $e',
+        isError: true,
+      );
+    }
+  }
+
+  // Compress image to reduce processing time
+  Future<File?> compressImage(XFile image) async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final targetPath =
+          '${dir.path}/${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      final result = await FlutterImageCompress.compressAndGetFile(
+        image.path,
+        targetPath,
+        quality: 80,
+        minWidth: 1024,
+        minHeight: 1024,
+      );
+
+      return result;
+    } catch (e) {
+      logger.e("Error compressing image: $e");
+      return null;
+    }
+  }
+
+  // Extract text from receipt using enhanced OCR
+  Future<void> extractTextFromReceipt(XFile photo) async {
+    try {
+      isProcessingOCR.value = true;
+      ocrText.value = '';
+      extractedTransactionId.value = '';
+
+      // Show processing dialog
+      Get.dialog(
+        AlertDialog(
+          title: Row(
+            children: [
+              CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+              ),
+              SizedBox(width: 16),
+              Text('Processing Receipt'),
+            ],
+          ),
+          content: Text('Extracting text from image...'),
+        ),
+        barrierDismissible: false,
+      );
+
+      final inputImage = InputImage.fromFilePath(photo.path);
+      final RecognizedText recognizedText =
+          await _textRecognizer.processImage(inputImage);
+
+      String fullText = '';
+      List<String> potentialTransactionIds = [];
+
+      // Process each text block
+      for (TextBlock block in recognizedText.blocks) {
+        for (TextLine line in block.lines) {
+          fullText += '${line.text}\n';
+
+          // Look for potential transaction IDs in each line
+          final candidates = _findPotentialTransactionIds(line.text);
+          potentialTransactionIds.addAll(candidates);
+        }
+      }
+
+      ocrText.value = fullText;
+
+      // Close processing dialog
+      Get.back();
+
+      if (potentialTransactionIds.isNotEmpty) {
+        // If multiple candidates found, show selection dialog
+        if (potentialTransactionIds.length > 1) {
+          final selectedId =
+              await _showTransactionIdSelectionDialog(potentialTransactionIds);
+          if (selectedId != null) {
+            _setTransactionId(selectedId);
+          }
+        } else {
+          // If single candidate found, use it directly
+          _setTransactionId(potentialTransactionIds.first);
+        }
+      } else {
+        showSnackBar(
+          'OCR Complete',
+          'No transaction ID found. Please enter manually.',
+        );
+      }
+    } catch (e) {
+      Get.back(); // Close processing dialog if error occurs
+      showSnackBar(
+        'OCR Error',
+        'Failed to extract text: $e',
+        isError: true,
+      );
+    } finally {
+      isProcessingOCR.value = false;
+    }
+  }
+
+  // Helper method to set transaction ID
+  void _setTransactionId(String id) {
+    extractedTransactionId.value = id;
+    transactionIdController.text = id;
+    transactionId.value = id;
+    paymentMethod.value = 'offline_ocr';
+    showSnackBar(
+      'Success',
+      'Transaction ID extracted: $id',
+    );
+  }
+
+  // Show dialog for selecting transaction ID from multiple candidates
+  Future<String?> _showTransactionIdSelectionDialog(
+      List<String> candidates) async {
+    return await Get.dialog<String>(
+      AlertDialog(
+        title: Text('Select Transaction ID'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+                'Multiple potential transaction IDs found. Please select the correct one:'),
+            SizedBox(height: 16),
+            ...candidates
+                .map((id) => ListTile(
+                      title: Text(id),
+                      onTap: () => Get.back(result: id),
+                    ))
+                .toList(),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Find potential transaction IDs in text
+  List<String> _findPotentialTransactionIds(String text) {
+    final List<String> candidates = [];
+
+    // Common patterns for transaction IDs
+    final patterns = [
+      // Exact patterns with labels
+      r'(?:Transaction|Trans|TXN|ID|REF)[\s:]*([A-Z0-9]{8,20})',
+      r'(?:Receipt|Ref|Reference)[\s:]*([A-Z0-9]{8,20})',
+      r'(?:Payment|Pay)[\s:]*([A-Z0-9]{8,20})',
+
+      // Generic patterns for numbers and alphanumeric strings
+      r'\b\d{6,15}\b', // Pure numeric
+      r'\b[A-Z0-9]{8,20}\b', // Alphanumeric
+
+      // Date-like patterns to exclude
+      r'\b\d{2}[/-]\d{2}[/-]\d{2,4}\b',
+      r'\b\d{4}[/-]\d{2}[/-]\d{2}\b',
+    ];
+
+    for (String pattern in patterns) {
+      final regex = RegExp(pattern, caseSensitive: false);
+      final matches = regex.allMatches(text);
+
+      for (Match match in matches) {
+        final candidate = match.group(1) ?? match.group(0) ?? '';
+        if (candidate.isNotEmpty &&
+            !_isDateFormat(candidate) &&
+            !_isCommonNumber(candidate)) {
+          candidates.add(candidate);
+        }
+      }
+    }
+
+    return candidates.toSet().toList(); // Remove duplicates
+  }
+
+  // Helper to check if string is a date format
+  bool _isDateFormat(String text) {
+    return RegExp(r'\b\d{2}[/-]\d{2}[/-]\d{2,4}\b').hasMatch(text) ||
+        RegExp(r'\b\d{4}[/-]\d{2}[/-]\d{2}\b').hasMatch(text);
+  }
+
+  // Helper to check if string is a common number (amount, phone, etc.)
+  bool _isCommonNumber(String text) {
+    // Check for currency amounts
+    if (RegExp(r'^\d+\.\d{2}$').hasMatch(text)) return true;
+
+    // Check for phone numbers
+    if (RegExp(r'^\+?\d{10,12}$').hasMatch(text)) return true;
+
+    return false;
   }
 
   @override
