@@ -40,7 +40,7 @@ class ReferenceDataService {
         _syncRelations(),
         _syncFamilyTypes(),
         _syncConfirmationTypes(),
-        _syncLocations(),
+        // _syncLocations(),
         _productService.syncProductsIfNeeded(),
       ];
 
@@ -200,77 +200,77 @@ class ReferenceDataService {
     }
   }
 
-  Future<ApiResponse> _syncLocations() async {
-    try {
-      const String query = '''
-        query LocationsStr {
-          locationsStr(type: "R") {
-            edges {
-              node {
-                id
-                uuid
-                code
-                name
-                type
-                clientMutationId
-                children {
-                  edges {
-                    cursor
-                    node {
-                      id
-                      uuid
-                      code
-                      name
-                      type
-                      clientMutationId
-                      children {
-                        edges {
-                          node {
-                            id
-                            uuid
-                            code
-                            name
-                            type
-                            children {
-                              edges {
-                                node {
-                                  id
-                                  uuid
-                                  code
-                                  name
-                                  type
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      ''';
+  // Future<ApiResponse> _syncLocations() async {
+  //   try {
+  //     const String query = '''
+  //       query LocationsStr {
+  //         locationsStr(type: "R") {
+  //           edges {
+  //             node {
+  //               id
+  //               uuid
+  //               code
+  //               name
+  //               type
+  //               clientMutationId
+  //               children {
+  //                 edges {
+  //                   cursor
+  //                   node {
+  //                     id
+  //                     uuid
+  //                     code
+  //                     name
+  //                     type
+  //                     clientMutationId
+  //                     children {
+  //                       edges {
+  //                         node {
+  //                           id
+  //                           uuid
+  //                           code
+  //                           name
+  //                           type
+  //                           children {
+  //                             edges {
+  //                               node {
+  //                                 id
+  //                                 uuid
+  //                                 code
+  //                                 name
+  //                                 type
+  //                               }
+  //                             }
+  //                           }
+  //                         }
+  //                       }
+  //                     }
+  //                   }
+  //                 }
+  //               }
+  //             }
+  //           }
+  //         }
+  //       }
+  //     ''';
 
-      final response =
-          await dioClient.post('/api/graphql', data: {'query': query});
+  //     final response =
+  //         await dioClient.post('/api/graphql', data: {'query': query});
 
-      if (response.statusCode == 200) {
-        final locationResponse =
-            LocationHierarchyResponse.fromJson(response.data);
-        final flatLocations =
-            LocationHierarchyUtils.flattenLocationHierarchy(locationResponse);
-        await _dbHelper.cacheLocations(flatLocations);
-        return ApiResponse.success(flatLocations);
-      }
+  //     if (response.statusCode == 200) {
+  //       final locationResponse =
+  //           LocationHierarchyResponse.fromJson(response.data);
+  //       final flatLocations =
+  //           LocationHierarchyUtils.flattenLocationHierarchy(locationResponse);
+  //       await _dbHelper.cacheLocations(flatLocations);
+  //       return ApiResponse.success(flatLocations);
+  //     }
 
-      return ApiResponse.failure('Failed to fetch locations');
-    } catch (e) {
-      return ApiResponse.failure('Error fetching locations: $e');
-    }
-  }
+  //     return ApiResponse.failure('Failed to fetch locations');
+  //   } catch (e) {
+  //     return ApiResponse.failure('Error fetching locations: $e');
+  //   }
+  // }
 
   // Get cached data methods
 

@@ -490,13 +490,14 @@ class EnhancedEnrollmentView extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Location & Family Details',
+            'Family Details',
             style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold),
           ),
           SizedBox(height: 16.h),
 
           // Location Selection
-          Card(
+          /* 
+         Card(
             child: Padding(
               padding: EdgeInsets.all(16.w),
               child: Column(
@@ -632,7 +633,7 @@ class EnhancedEnrollmentView extends StatelessWidget {
           ),
 
           SizedBox(height: 16.h),
-
+*/
           // Family Details
           Card(
             child: Padding(

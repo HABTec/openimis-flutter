@@ -1,13 +1,17 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:get/get.dart';
 import 'package:get/get_state_manager/get_state_manager.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../../data/remote/services/enrollment/reference_data_service.dart';
 import '../../../data/remote/services/enrollment/enhanced_insuree_service.dart';
 import '../../../data/remote/services/enrollment/product_service.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../../data/remote/services/enrollment/policy_service.dart';
 import '../../../data/remote/services/enrollment/contribution_service.dart';
 import '../../../data/local/services/enhanced_contribution_service.dart';
@@ -208,7 +212,7 @@ class EnhancedEnrollmentController extends GetxController {
     super.onInit();
     _initConnectivityListener();
     _checkReferenceDataAndInit();
-    _setupLocationListeners();
+    // _setupLocationListeners();
     _setDefaultTestValues();
   }
 
@@ -1380,7 +1384,7 @@ class EnhancedEnrollmentController extends GetxController {
         }
       }
 
-      final XFile? photo = await _picker.pickImage(
+      final XFile? photo = await ImagePicker().pickImage(
         source: source,
         imageQuality: 80,
         maxWidth: 1920,
@@ -1407,8 +1411,20 @@ class EnhancedEnrollmentController extends GetxController {
     }
   }
 
+  void showSnackBar(String title, String message, {bool isError = false}) {
+    Get.snackbar(
+      title,
+      message,
+      backgroundColor:
+          isError ? const Color(0xFFFF5252) : const Color(0xFF4CAF50),
+      colorText: Colors.white,
+      duration: const Duration(seconds: 3),
+      snackPosition: SnackPosition.BOTTOM,
+    );
+  }
+
   // Compress image to reduce processing time
-  Future<File?> compressImage(XFile image) async {
+  Future<XFile?> compressImage(XFile image) async {
     try {
       final dir = await getTemporaryDirectory();
       final targetPath =
@@ -1424,7 +1440,7 @@ class EnhancedEnrollmentController extends GetxController {
 
       return result;
     } catch (e) {
-      logger.e("Error compressing image: $e");
+      print("Error compressing image: $e");
       return null;
     }
   }
@@ -1455,6 +1471,7 @@ class EnhancedEnrollmentController extends GetxController {
       );
 
       final inputImage = InputImage.fromFilePath(photo.path);
+      var _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
       final RecognizedText recognizedText =
           await _textRecognizer.processImage(inputImage);
 
