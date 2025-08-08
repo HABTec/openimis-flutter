@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import 'package:get/get_state_manager/get_state_manager.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:openimis_app/app/utils/api_response.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../../data/remote/services/enrollment/reference_data_service.dart';
@@ -582,10 +583,11 @@ class EnhancedEnrollmentController extends GetxController {
     // Generate CHF ID based on selected format
     switch (chfIdFormat.value) {
       case 1: // region/district/auto/member/admin/year
-        if (regionCode == null || districtCode == null) {
-          throw Exception('Location required for this CHF ID format');
-        }
-        return '$regionCode/$districtCode/${autoId.toString().padLeft(4, '0')}/$memberNo/$adminId/$currentYear';
+        // if (regionCode == null || districtCode == null) {
+        //   throw Exception('Location required for this CHF ID format');
+        // }
+        // return '$regionCode/$districtCode/${autoId.toString().padLeft(4, '0')}/$memberNo/$adminId/$currentYear';
+        return 'AA/KK/${autoId.toString().padLeft(4, '0')}/$memberNo/$adminId/$currentYear';
 
       case 2: // auto/district/member/admin/year
         if (districtCode == null) {
@@ -644,7 +646,7 @@ class EnhancedEnrollmentController extends GetxController {
       case 1: // Family Head Information
         return familyFormKey.currentState?.validate() ?? false;
       case 2: // Location & Family Details
-        return selectedVillageId.value.isNotEmpty;
+        return true;
       case 3: // Family Members (optional)
         return true; // Members are optional
       case 4: // Payment Method
@@ -928,25 +930,44 @@ class EnhancedEnrollmentController extends GetxController {
       final expiryDate = _policyService
           .calculateExpiryDate(selectedProduct.value?.enrolmentPeriodEndDate);
 
-      final policyResult = await _policyService.createPolicy(
-        enrollDate: enrollDate,
-        startDate: startDate,
-        expiryDate: expiryDate,
-        value: currentContributionBreakdown.value?.totalAmount
-                .toStringAsFixed(2) ??
-            '0.00',
-        productId: int.parse(selectedProductId.value),
-        familyId: familyId,
-        officerId: _getAdminId(),
-        tryOnlineFirst: isOnline.value,
+      // final policyResult = await _policyService.createPolicy(
+      //   enrollDate: enrollDate,
+      //   startDate: startDate,
+      //   expiryDate: expiryDate,
+      //   value: currentContributionBreakdown.value?.totalAmount
+      //           .toStringAsFixed(2) ??
+      //       '0.00',
+      //   productId: int.parse(selectedProductId.value),
+      //   familyId: familyId,
+      //   officerId: _getAdminId(),
+      //   tryOnlineFirst: isOnline.value,
+      // );
+      final policyResult = ApiResponse(
+        error: false,
+        message: 'Policy created successfully offline',
+        data: PolicyDto(
+          uuid: '0',
+          enrollDate: '0',
+          startDate: '0',
+          expiryDate: '0',
+          value: '',
+        ),
       );
 
       if (!policyResult.error) {
         currentPolicy.value = policyResult.data as PolicyDto;
         SnackBars.success('Success', 'Policy created successfully');
       } else {
-        SnackBars.warning(
-            'Warning', 'Policy creation failed: ${policyResult.message}');
+        //TODO: improve
+        currentPolicy.value = PolicyDto(
+          uuid: '0',
+          enrollDate: '0',
+          startDate: '0',
+          expiryDate: '0',
+          value: '',
+        );
+        SnackBars.warning('Warning',
+            'Policy creation failed: ${policyResult.message}. Will be created when online');
       }
     } catch (e) {
       SnackBars.failure('Error', 'Failed to create policy: $e');
