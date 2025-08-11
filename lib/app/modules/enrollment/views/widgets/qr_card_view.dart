@@ -542,25 +542,70 @@ class _QRCardViewState extends State<QRCardView> {
       final imageBytes = await screenshotController.capture(pixelRatio: 3.0);
 
       if (imageBytes != null) {
-        // Get temporary directory
-        final directory = await getTemporaryDirectory();
-        final fileName = 'CBHI_Card_${widget.chfid}.png';
-        final filePath = '${directory.path}/$fileName';
+        // Get the downloads directory (same as download function)
+        Directory? directory;
+        String filePath;
 
-        // Save temporary file
-        final file = File(filePath);
-        await file.writeAsBytes(imageBytes);
+        if (Platform.isAndroid) {
+          // Use the public Downloads directory
+          const String downloadsPath = '/storage/emulated/0/Download';
+          directory = Directory(downloadsPath);
 
-        // Close loading dialog
-        Get.back();
+          // Create CBHI folder in downloads if it doesn't exist
+          final cbhiDir = Directory('$downloadsPath/CBHI_Cards');
+          if (!await cbhiDir.exists()) {
+            try {
+              await cbhiDir.create(recursive: true);
+              directory = cbhiDir;
+            } catch (e) {
+              // If we can't create subfolder, save directly to Downloads
+              print(
+                  'Could not create CBHI_Cards folder, saving to Downloads: $e');
+              directory = Directory(downloadsPath);
+            }
+          } else {
+            directory = cbhiDir;
+          }
+        } else {
+          // For iOS, use documents directory
+          directory = await getApplicationDocumentsDirectory();
+        }
 
-        // Share the file
-        await Share.shareXFiles(
-          [XFile(filePath)],
-          text:
-              'CBHI Membership Card for ${widget.memberName}\nCHFID: ${widget.chfid}\n\nCommunity Based Health Insurance',
-          subject: 'CBHI Membership Card - ${widget.memberName}',
-        );
+        // Generate filename with timestamp for sharing
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final cleanChfId =
+            widget.chfid.replaceAll('/', '_').replaceAll('\\', '_');
+        final fileName = 'CBHI_Card_${cleanChfId}_share_$timestamp.png';
+        filePath = '${directory.path}/$fileName';
+
+        try {
+          // Save file to Downloads
+          final file = File(filePath);
+          await file.writeAsBytes(imageBytes);
+
+          // Close loading dialog
+          Get.back();
+
+          // Share the file
+          await Share.shareXFiles(
+            [XFile(filePath)],
+            text:
+                'CBHI Membership Card for ${widget.memberName}\nCHFID: ${widget.chfid}\n\nCommunity Based Health Insurance',
+            subject: 'CBHI Membership Card - ${widget.memberName}',
+          );
+        } catch (e) {
+          // Close loading dialog
+          Get.back();
+
+          print('Error sharing file: $e');
+          Get.snackbar(
+            'Error',
+            'Failed to share membership card: ${e.toString()}',
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+            duration: Duration(seconds: 5),
+          );
+        }
       } else {
         Get.back();
         Get.snackbar(
