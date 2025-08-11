@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../controller/enrollment_controller.dart';
+import '../../controller/enhanced_enrollment_controller.dart';
 
 class OfflinePaymentView extends StatelessWidget {
-  final EnrollmentController controller = Get.find<EnrollmentController>();
+  final EnhancedEnrollmentController controller =
+      Get.find<EnhancedEnrollmentController>();
 
   OfflinePaymentView({Key? key}) : super(key: key);
 
@@ -85,7 +86,7 @@ class OfflinePaymentView extends StatelessWidget {
                   ),
                   SizedBox(height: 8.h),
                   Obx(() => Text(
-                        '${controller.paymentAmount.value.toStringAsFixed(2)} ETB',
+                        '${controller.calculatedContribution.value.toStringAsFixed(2)} ETB',
                         style: TextStyle(
                           fontSize: 24.sp,
                           fontWeight: FontWeight.bold,
@@ -268,39 +269,6 @@ class OfflinePaymentView extends StatelessWidget {
                     ],
                   )
                 : Container()),
-
-            SizedBox(height: 24.h),
-            SizedBox(height: 24.h),
-            Text(controller.transactionId.value.isNotEmpty.toString()),
-            // Save button
-            Obx(() => SizedBox(
-                  width: double.infinity,
-                  height: 50.h,
-                  child: ElevatedButton(
-                    onPressed: controller.transactionId.value.isNotEmpty
-                        ? () async {
-                            // Close the bottom sheet first
-                            Get.back();
-                            // Then save payment data and navigate to invoice
-                            await controller.saveOfflinePaymentData();
-                          }
-                        : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                    ),
-                    child: Text(
-                      'Save Payment Information',
-                      style: TextStyle(
-                        fontSize: 16.sp,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                )),
           ],
         ),
       ),
@@ -377,10 +345,9 @@ class OfflinePaymentView extends StatelessWidget {
           ),
           ElevatedButton(
             onPressed: () {
-              if (controller.validateTransactionId(
-                  controller.transactionIdController.text)) {
-                controller.setManualTransactionId(
-                    controller.transactionIdController.text);
+              final id = controller.transactionIdController.text.trim();
+              if (controller.validateTransactionId(id)) {
+                controller.setManualTransactionId(id);
                 Get.back();
               } else {
                 Get.snackbar(

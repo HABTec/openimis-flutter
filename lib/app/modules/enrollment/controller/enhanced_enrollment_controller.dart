@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import 'package:get/get_state_manager/get_state_manager.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:openimis_app/app/modules/enrollment/views/widgets/offline_payment_view.dart';
 import 'package:openimis_app/app/utils/api_response.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
@@ -1149,116 +1150,9 @@ class EnhancedEnrollmentController extends GetxController {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16.r),
         ),
-        title: Row(
-          children: [
-            Icon(Icons.receipt_long, color: AppTheme.primaryColor),
-            SizedBox(width: 8.w),
-            Text(
-              'Enter Transaction ID',
-              style: TextStyle(
-                fontSize: 18.sp,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.primaryColor,
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Please enter the transaction ID from your PoS receipt:',
-              style: TextStyle(fontSize: 14.sp, color: Colors.grey[700]),
-            ),
-            SizedBox(height: 16.h),
-
-            // Manual entry section
-            Container(
-              padding: EdgeInsets.all(16.w),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(12.r),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.keyboard, color: Colors.blue, size: 20.w),
-                      SizedBox(width: 8.w),
-                      Text(
-                        'Manual Entry',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: Colors.blue.shade700,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 12.h),
-                  TextFormField(
-                    controller: transactionIdController,
-                    decoration: InputDecoration(
-                      labelText: 'Transaction ID',
-                      hintText: 'e.g., TXN123456789',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.r),
-                      ),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12.w,
-                        vertical: 12.h,
-                      ),
-                    ),
-                    textCapitalization: TextCapitalization.characters,
-                    onChanged: (value) {
-                      transactionId.value = value.trim();
-                    },
-                  ),
-                ],
-              ),
-            ),
-
-            SizedBox(height: 16.h),
-
-            // OCR placeholder section
-            Container(
-              padding: EdgeInsets.all(16.w),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(12.r),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.camera_alt, color: Colors.grey, size: 20.w),
-                      SizedBox(width: 8.w),
-                      Text(
-                        'Scan Receipt (Coming Soon)',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 8.h),
-                  Text(
-                    'OCR scanning feature will be available in a future update',
-                    style: TextStyle(
-                      fontSize: 12.sp,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+        insetPadding: EdgeInsets.zero,
+        contentPadding: EdgeInsets.symmetric(vertical: 16.h),
+        content: OfflinePaymentView(),
         actions: [
           TextButton(
             onPressed: () => Get.back(),
@@ -1495,12 +1389,13 @@ class EnhancedEnrollmentController extends GetxController {
       var _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
       final RecognizedText recognizedText =
           await _textRecognizer.processImage(inputImage);
-
+      print("recognizedText: ${recognizedText.text}");
       String fullText = '';
       List<String> potentialTransactionIds = [];
 
       // Process each text block
       for (TextBlock block in recognizedText.blocks) {
+        print("block: ${block.text}");
         for (TextLine line in block.lines) {
           fullText += '${line.text}\n';
 
@@ -1597,6 +1492,7 @@ class EnhancedEnrollmentController extends GetxController {
       r'(?:Transaction|Trans|TXN|ID|REF)[\s:]*([A-Z0-9]{8,20})',
       r'(?:Receipt|Ref|Reference)[\s:]*([A-Z0-9]{8,20})',
       r'(?:Payment|Pay)[\s:]*([A-Z0-9]{8,20})',
+      r'^(PDS.6174-5743-4299-60552)$',
 
       // Generic patterns for numbers and alphanumeric strings
       r'\b\d{6,15}\b', // Pure numeric
