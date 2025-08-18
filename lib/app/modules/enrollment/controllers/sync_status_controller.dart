@@ -22,6 +22,10 @@ class SyncStatusController extends GetxController {
   final RxMap<String, int> stats = <String, int>{}.obs;
   final RxList<FamilyDto> pendingFamilies = <FamilyDto>[].obs;
   final RxList<InsureeDto> pendingInsurees = <InsureeDto>[].obs;
+  final RxList<FamilyDto> syncedFamilies = <FamilyDto>[].obs;
+  final RxList<InsureeDto> syncedInsurees = <InsureeDto>[].obs;
+  final RxList<FamilyDto> failedFamilies = <FamilyDto>[].obs;
+  final RxList<InsureeDto> failedInsurees = <InsureeDto>[].obs;
 
   @override
   void onInit() {
@@ -56,6 +60,12 @@ class SyncStatusController extends GetxController {
       // Load pending insurees
       final insurees = await _dbHelper.getUnsyncedInsurees();
       pendingInsurees.assignAll(insurees);
+
+      // Load synced and failed lists
+      syncedFamilies.assignAll(await _dbHelper.getFamiliesBySyncStatus(1));
+      failedFamilies.assignAll(await _dbHelper.getFamiliesBySyncStatus(2));
+      syncedInsurees.assignAll(await _dbHelper.getInsureesBySyncStatus(1));
+      failedInsurees.assignAll(await _dbHelper.getInsureesBySyncStatus(2));
     } catch (e) {
       SnackBars.failure('Error', 'Failed to load sync data: $e');
     } finally {
@@ -205,16 +215,13 @@ class SyncStatusController extends GetxController {
     }
 
     try {
-      // Reset sync status to pending
-      await _dbHelper.updateFamilySyncStatus(localId, 0);
-
-      // Attempt sync
-      final result = await _insureeService.syncAllPending();
+      // Attempt direct resync of this family
+      final result = await _insureeService.resyncFamily(localId);
 
       if (result.error) {
         SnackBars.failure('Retry Failed', result.message);
       } else {
-        SnackBars.success('Success', 'Family sync retry successful');
+        SnackBars.success('Success', result.message);
       }
 
       await refreshData();
@@ -230,16 +237,13 @@ class SyncStatusController extends GetxController {
     }
 
     try {
-      // Reset sync status to pending
-      await _dbHelper.updateInsureeSyncStatus(localId, 0);
-
-      // Attempt sync
-      final result = await _insureeService.syncAllPending();
+      // Attempt direct resync of this insuree
+      final result = await _insureeService.resyncInsuree(localId);
 
       if (result.error) {
         SnackBars.failure('Retry Failed', result.message);
       } else {
-        SnackBars.success('Success', 'Insuree sync retry successful');
+        SnackBars.success('Success', result.message);
       }
 
       await refreshData();

@@ -683,6 +683,73 @@ class EnhancedDatabaseHelper {
     }).toList();
   }
 
+  Future<List<FamilyDto>> getFamiliesBySyncStatus(int status) async {
+    final db = await database;
+    final results = await db.rawQuery('''
+      SELECT f.*, 
+             i.local_id as head_local_id, i.chf_id as head_chf_id, 
+             i.last_name as head_last_name, i.other_names as head_other_names,
+             i.gender_id as head_gender_id, i.dob as head_dob, i.marital as head_marital,
+             i.passport as head_passport, i.phone as head_phone, i.email as head_email,
+             i.photo_data as head_photo_data, i.photo_officer_id as head_photo_officer_id,
+             i.photo_date as head_photo_date, i.card_issued as head_card_issued,
+             i.profession_id as head_profession_id, i.education_id as head_education_id,
+             i.type_of_id_id as head_type_of_id_id, i.status as head_status,
+             i.json_ext as head_json_ext
+      FROM families f
+      LEFT JOIN insurees i ON f.local_id = i.local_family_id AND i.head = 1
+      WHERE f.sync_status = ?
+      ORDER BY f.updated_at DESC
+    ''', [status]);
+
+    return results.map((map) {
+      final family = FamilyDto(
+        localId: map['local_id'] as int?,
+        locationId: map['location_id'] as int?,
+        poverty: (map['poverty'] as int?) == 1,
+        familyTypeId: map['family_type_id'] as String?,
+        address: map['address'] as String?,
+        confirmationTypeId: map['confirmation_type_id'] as String?,
+        confirmationNo: map['confirmation_no'] as String?,
+        jsonExt: map['json_ext'] as String?,
+        syncStatus: map['sync_status'] as int?,
+        createdAt: map['created_at'] as String?,
+        updatedAt: map['updated_at'] as String?,
+      );
+
+      if (map['head_local_id'] != null) {
+        family.headInsuree = InsureeDto(
+          localId: map['head_local_id'] as int?,
+          chfId: map['head_chf_id'] as String?,
+          lastName: map['head_last_name'] as String?,
+          otherNames: map['head_other_names'] as String?,
+          genderId: map['head_gender_id'] as String?,
+          dob: map['head_dob'] as String?,
+          head: true,
+          marital: map['head_marital'] as String?,
+          passport: map['head_passport'] as String?,
+          phone: map['head_phone'] as String?,
+          email: map['head_email'] as String?,
+          photo: map['head_photo_data'] != null
+              ? PhotoDto(
+                  photo: map['head_photo_data'] as String?,
+                  officerId: map['head_photo_officer_id'] as int?,
+                  date: map['head_photo_date'] as String?,
+                )
+              : null,
+          cardIssued: (map['head_card_issued'] as int?) == 1,
+          professionId: map['head_profession_id'] as int?,
+          educationId: map['head_education_id'] as int?,
+          typeOfIdId: map['head_type_of_id_id'] as String?,
+          status: map['head_status'] as String?,
+          jsonExt: map['head_json_ext'] as String?,
+        );
+      }
+
+      return family;
+    }).toList();
+  }
+
   Future<List<InsureeDto>> getUnsyncedInsurees() async {
     final db = await database;
     final results = await db.query(
@@ -725,6 +792,174 @@ class EnhancedDatabaseHelper {
               updatedAt: map['updated_at'] as String?,
             ))
         .toList();
+  }
+
+  Future<List<InsureeDto>> getInsureesBySyncStatus(int status) async {
+    final db = await database;
+    final results = await db.query(
+      'insurees',
+      where: 'sync_status = ? AND head = 0',
+      whereArgs: [status],
+      orderBy: 'updated_at DESC',
+    );
+
+    return results
+        .map((map) => InsureeDto(
+              localId: map['local_id'] as int?,
+              chfId: map['chf_id'] as String?,
+              lastName: map['last_name'] as String?,
+              otherNames: map['other_names'] as String?,
+              genderId: map['gender_id'] as String?,
+              dob: map['dob'] as String?,
+              head: (map['head'] as int?) == 1,
+              marital: map['marital'] as String?,
+              passport: map['passport'] as String?,
+              phone: map['phone'] as String?,
+              email: map['email'] as String?,
+              photo: map['photo_data'] != null
+                  ? PhotoDto(
+                      photo: map['photo_data'] as String?,
+                      officerId: map['photo_officer_id'] as int?,
+                      date: map['photo_date'] as String?,
+                    )
+                  : null,
+              cardIssued: (map['card_issued'] as int?) == 1,
+              professionId: map['profession_id'] as int?,
+              educationId: map['education_id'] as int?,
+              typeOfIdId: map['type_of_id_id'] as String?,
+              localFamilyId: map['local_family_id'] as int?,
+              familyId: map['remote_family_id'] as int?,
+              relationshipId: map['relationship_id'] as int?,
+              status: map['status'] as String?,
+              jsonExt: map['json_ext'] as String?,
+              syncStatus: map['sync_status'] as int?,
+              createdAt: map['created_at'] as String?,
+              updatedAt: map['updated_at'] as String?,
+            ))
+        .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> getSyncOperationsForEntity(
+      String entityType, int localId) async {
+    final db = await database;
+    return await db.query(
+      'sync_operations',
+      where: 'entity_type = ? AND local_id = ?'
+          ' AND attempts <= max_attempts',
+      whereArgs: [entityType, localId],
+      orderBy: 'created_at DESC',
+    );
+  }
+
+  Future<FamilyDto?> getFamilyByLocalId(int localId) async {
+    final db = await database;
+    final results = await db.rawQuery('''
+      SELECT f.*, 
+             i.local_id as head_local_id, i.chf_id as head_chf_id, 
+             i.last_name as head_last_name, i.other_names as head_other_names,
+             i.gender_id as head_gender_id, i.dob as head_dob, i.marital as head_marital,
+             i.passport as head_passport, i.phone as head_phone, i.email as head_email,
+             i.photo_data as head_photo_data, i.photo_officer_id as head_photo_officer_id,
+             i.photo_date as head_photo_date, i.card_issued as head_card_issued,
+             i.profession_id as head_profession_id, i.education_id as head_education_id,
+             i.type_of_id_id as head_type_of_id_id, i.status as head_status,
+             i.json_ext as head_json_ext
+      FROM families f
+      LEFT JOIN insurees i ON f.local_id = i.local_family_id AND i.head = 1
+      WHERE f.local_id = ?
+      LIMIT 1
+    ''', [localId]);
+    if (results.isEmpty) return null;
+    final map = results.first;
+    final family = FamilyDto(
+      localId: map['local_id'] as int?,
+      locationId: map['location_id'] as int?,
+      poverty: (map['poverty'] as int?) == 1,
+      familyTypeId: map['family_type_id'] as String?,
+      address: map['address'] as String?,
+      confirmationTypeId: map['confirmation_type_id'] as String?,
+      confirmationNo: map['confirmation_no'] as String?,
+      jsonExt: map['json_ext'] as String?,
+      syncStatus: map['sync_status'] as int?,
+      createdAt: map['created_at'] as String?,
+      updatedAt: map['updated_at'] as String?,
+      remoteFamilyId: map['remote_id'] as int?,
+      syncError: map['sync_error'] as String?,
+    );
+    if (map['head_local_id'] != null) {
+      family.headInsuree = InsureeDto(
+        localId: map['head_local_id'] as int?,
+        chfId: map['head_chf_id'] as String?,
+        lastName: map['head_last_name'] as String?,
+        otherNames: map['head_other_names'] as String?,
+        genderId: map['head_gender_id'] as String?,
+        dob: map['head_dob'] as String?,
+        head: true,
+        marital: map['head_marital'] as String?,
+        passport: map['head_passport'] as String?,
+        phone: map['head_phone'] as String?,
+        email: map['head_email'] as String?,
+        photo: map['head_photo_data'] != null
+            ? PhotoDto(
+                photo: map['head_photo_data'] as String?,
+                officerId: map['head_photo_officer_id'] as int?,
+                date: map['head_photo_date'] as String?,
+              )
+            : null,
+        cardIssued: (map['head_card_issued'] as int?) == 1,
+        professionId: map['head_profession_id'] as int?,
+        educationId: map['head_education_id'] as int?,
+        typeOfIdId: map['head_type_of_id_id'] as String?,
+        status: map['head_status'] as String?,
+        jsonExt: map['head_json_ext'] as String?,
+      );
+    }
+    return family;
+  }
+
+  Future<InsureeDto?> getInsureeByLocalId(int localId) async {
+    final db = await database;
+    final results = await db.query(
+      'insurees',
+      where: 'local_id = ?',
+      whereArgs: [localId],
+      limit: 1,
+    );
+    if (results.isEmpty) return null;
+    final map = results.first;
+    return InsureeDto(
+      localId: map['local_id'] as int?,
+      chfId: map['chf_id'] as String?,
+      lastName: map['last_name'] as String?,
+      otherNames: map['other_names'] as String?,
+      genderId: map['gender_id'] as String?,
+      dob: map['dob'] as String?,
+      head: (map['head'] as int?) == 1,
+      marital: map['marital'] as String?,
+      passport: map['passport'] as String?,
+      phone: map['phone'] as String?,
+      email: map['email'] as String?,
+      photo: map['photo_data'] != null
+          ? PhotoDto(
+              photo: map['photo_data'] as String?,
+              officerId: map['photo_officer_id'] as int?,
+              date: map['photo_date'] as String?,
+            )
+          : null,
+      cardIssued: (map['card_issued'] as int?) == 1,
+      professionId: map['profession_id'] as int?,
+      educationId: map['education_id'] as int?,
+      typeOfIdId: map['type_of_id_id'] as String?,
+      localFamilyId: map['local_family_id'] as int?,
+      familyId: map['remote_family_id'] as int?,
+      relationshipId: map['relationship_id'] as int?,
+      status: map['status'] as String?,
+      jsonExt: map['json_ext'] as String?,
+      syncStatus: map['sync_status'] as int?,
+      createdAt: map['created_at'] as String?,
+      updatedAt: map['updated_at'] as String?,
+      syncError: map['sync_error'] as String?,
+    );
   }
 
   Future<void> updateFamilySyncStatus(int localId, int syncStatus,

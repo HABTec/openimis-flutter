@@ -1,10 +1,8 @@
-import 'package:dio/dio.dart';
 import 'package:uuid/uuid.dart';
 import '../../api/dio_client.dart';
 import '../../dto/enrollment/insuree_dto.dart';
 import '../../../../utils/enhanced_database_helper.dart';
 import '../../../../utils/api_response.dart';
-import '../../../../modules/auth/controllers/auth_controller.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:get/get.dart';
 
@@ -23,7 +21,6 @@ class EnhancedInsureeService {
 
   // Get current user's officer ID
   int _getOfficerId() {
-    final user = AuthController.to.currentUser;
     // For now, use a default officer ID of 1
     // TODO: Implement proper officer ID retrieval when available
     return 1; // Default officer ID
@@ -31,7 +28,6 @@ class EnhancedInsureeService {
 
   // Get current user's health facility ID
   int _getHealthFacilityId() {
-    final user = AuthController.to.currentUser;
     // For now, use a default health facility ID of 17
     // TODO: Implement proper health facility ID retrieval when available
     return 17; // Default health facility ID
@@ -328,6 +324,15 @@ class EnhancedInsureeService {
           syncError: e.toString());
       return ApiResponse.failure('Failed to sync insuree: $e');
     }
+  }
+
+  /// Public methods to force-resync a specific entity by localId
+  Future<ApiResponse> resyncFamily(int localId) async {
+    return await _syncFamilyToServer(localId);
+  }
+
+  Future<ApiResponse> resyncInsuree(int localId) async {
+    return await _syncInsureeToServer(localId);
   }
 
   /// Get sync statistics

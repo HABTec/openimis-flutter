@@ -12,11 +12,7 @@ import 'package:openimis_app/app/modules/enrollment/controller/LocationDto.dart'
 import 'package:openimis_app/app/modules/enrollment/controller/MembershipDto.dart';
 import 'package:openimis_app/app/data/remote/services/payment/arifpay_service.dart';
 import 'package:openimis_app/app/data/local/services/contribution_config_service.dart';
-import 'package:path/path.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
+
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:logger/logger.dart';
 
@@ -31,7 +27,6 @@ import '../views/widgets/qr_card_view.dart';
 import '../views/widgets/offline_payment_invoice_view.dart';
 import 'EnrollmentDto.dart';
 import 'HospitalDto.dart';
-import '../../auth/controllers/auth_controller.dart';
 
 // Family Member Model
 class FamilyMember {
@@ -203,12 +198,16 @@ class EnrollmentController extends GetxController
 
   final ImagePicker _picker = ImagePicker();
   var shouldHide = false.obs;
+  // UI banners visibility
+  var showRenewalBanner = true.obs;
+  var showEnrollmentPeriodBanner = true.obs;
 
   var filteredEnrollments = <Map<String, dynamic>>[].obs;
   var searchText = ''.obs;
   var enrollments = <Map<String, dynamic>>[].obs;
   var selectedEnrollments = <int>[].obs;
   var isAllSelected = false.obs;
+  var selectedFilter = 'All'.obs;
 
   // Location dropdowns
   final Rx<Status<List<LocationDto>>> _rxLocationState =
@@ -237,24 +236,54 @@ class EnrollmentController extends GetxController
     super.onInit();
     tabController = TabController(length: 2, vsync: this);
 
+    logger.i("EnrollmentController onInit started");
+
     // Auto-generate CHFID on initialization
     _autoGenerateChfid();
 
-    fetchEnrollments();
-    fetchLocations();
-    fetchHospitals();
-    // Start periodic sync check
-    _startPeriodicSync();
-    // Check initial connectivity
-    _checkConnectivity();
-    // Initialize configuration sync
-    _initializeConfigSync();
+    // Initialize dummy families first, then try to fetch from database
+    initializeDummyFamilies();
+
+    // Initialize other data asynchronously
+    _initializeAsyncData();
 
     // Set up reactive listeners for membership details changes
     ever(membershipType, (_) => _onMembershipDetailsChanged());
     ever(membershipLevel, (_) => _onMembershipDetailsChanged());
     ever(areaType, (_) => _onMembershipDetailsChanged());
     ever(familyMembers, (_) => _onMembershipDetailsChanged());
+
+    logger.i("EnrollmentController onInit completed");
+  }
+
+  // Initialize async data separately to avoid blocking UI
+  Future<void> _initializeAsyncData() async {
+    try {
+      logger.i("Starting async data initialization...");
+
+      // Add a small delay to ensure dummy data is properly set
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // Load enrollments from database
+      await _loadEnrollmentsFromDatabase();
+
+      // Load other data
+      fetchLocations();
+      fetchHospitals();
+
+      // Start periodic sync check
+      _startPeriodicSync();
+
+      // Check initial connectivity
+      await _checkConnectivity();
+
+      // Initialize configuration sync
+      await _initializeConfigSync();
+
+      logger.i("Async data initialization completed");
+    } catch (e) {
+      logger.e("Error during async data initialization", e);
+    }
   }
 
   // Auto-generate CHFID
@@ -306,21 +335,60 @@ class EnrollmentController extends GetxController
         filteredEnrollments.map<int>((enrollment) => enrollment['id'] as int),
       );
     }
-    // Initialize configuration sync
-    _initializeConfigSync();
-
-    // Set up reactive listeners for membership details changes
-    ever(membershipType, (_) => _onMembershipDetailsChanged());
-    ever(membershipLevel, (_) => _onMembershipDetailsChanged());
-    ever(areaType, (_) => _onMembershipDetailsChanged());
-    ever(familyMembers, (_) => _onMembershipDetailsChanged());
   }
 
   Future<void> fetchEnrollments() async {
-    final dbHelper = DatabaseHelper();
-    final data = await dbHelper.getAllFamiliesWithMembers();
-    enrollments.value = data;
-    filteredEnrollments.value = data;
+    try {
+      final dbHelper = DatabaseHelper();
+      final data = await dbHelper.getAllFamiliesWithMembers();
+
+      // Always update with database data when explicitly fetching
+      enrollments.value = data;
+      filteredEnrollments.value = data;
+      logger.i("Fetched ${data.length} families from database");
+    } catch (e) {
+      logger.e("Error fetching enrollments", e);
+      // Keep existing data if fetch fails
+    }
+  }
+
+  // Load enrollments from database, but only if there's actual data
+  Future<void> _loadEnrollmentsFromDatabase() async {
+    try {
+      logger.i("Loading enrollments from database...");
+      final dbHelper = DatabaseHelper();
+      final data = await dbHelper.getAllFamiliesWithMembers();
+
+      logger.i("Database returned ${data.length} families");
+
+      // Only update if we have actual data (not empty)
+      if (data.isNotEmpty) {
+        enrollments.value = data;
+        filteredEnrollments.value = data;
+        logger.i("Loaded ${data.length} families from database");
+      } else {
+        logger.i("Database is empty, keeping dummy data");
+        // Ensure dummy data is still there
+        if (enrollments.isEmpty) {
+          logger.i("Enrollments list is empty, reinitializing dummy data");
+          initializeDummyFamilies();
+        } else {
+          logger.i(
+              "Enrollments list has ${enrollments.length} items, keeping existing data");
+        }
+      }
+    } catch (e) {
+      logger.e("Error loading enrollments from database", e);
+      // Keep dummy data if database access fails
+      if (enrollments.isEmpty) {
+        logger.i(
+            "Database error and enrollments empty, reinitializing dummy data");
+        initializeDummyFamilies();
+      } else {
+        logger.i(
+            "Database error but enrollments has ${enrollments.length} items, keeping existing data");
+      }
+    }
   }
 
   Future<void> fetchLocations() async {
@@ -613,12 +681,17 @@ class EnrollmentController extends GetxController
     });
   }
 
+  // Public wrapper to show membership card from views
+  void showMembershipCard() {
+    _showQRCard();
+  }
+
   // Sync to backend
   Future<void> syncToBackend(List<int> enrollmentIds) async {
     try {
       isLoading(true);
 
-      for (int id in enrollmentIds) {
+      for (int enrollmentId in enrollmentIds) {
         // Mock sync - simulate API call
         await Future.delayed(const Duration(seconds: 1));
 
@@ -929,7 +1002,7 @@ class EnrollmentController extends GetxController
         confirmationNo: confirmationNumber.text,
       );
 
-      if (!result.error) {
+      if (result.error == false) {
         logger.i("GraphQL family creation successful");
         SnackBars.success('Success',
             result.message ?? 'Family created successfully in backend!');
@@ -939,7 +1012,9 @@ class EnrollmentController extends GetxController
         // fetchEnrollments();
       } else {
         logger.e("GraphQL family creation failed: ${result.message}");
-        throw Exception(result.message ?? 'Failed to create family in backend');
+        throw Exception(result.message.isNotEmpty
+            ? result.message
+            : 'Failed to create family in backend');
       }
     } catch (e) {
       logger.e("Error in createFamilyOnline: $e");
@@ -1492,6 +1567,9 @@ class EnrollmentController extends GetxController
         } else {
           logger.w('Configuration sync failed - using local data');
         }
+        // Trigger UI updates
+        showRenewalBanner.value = false;
+        showEnrollmentPeriodBanner.value = false;
       }
     } catch (e) {
       logger.e('Error initializing config sync', e);
@@ -1837,12 +1915,16 @@ class EnrollmentController extends GetxController
         confirmationNo: 'TEST123456',
       );
 
-      if (!testResult.error) {
+      if (testResult.error == false) {
         logger.i("GraphQL test successful!");
         SnackBars.success('Test Success', 'GraphQL connection is working!');
       } else {
         logger.e("GraphQL test failed: ${testResult.message}");
-        SnackBars.failure('Test Failed', testResult.message ?? 'Unknown error');
+        SnackBars.failure(
+            'Test Failed',
+            testResult.message.isNotEmpty
+                ? testResult.message
+                : 'Unknown error');
       }
     } catch (e) {
       logger.e("GraphQL test error: $e");
@@ -1850,6 +1932,460 @@ class EnrollmentController extends GetxController
     } finally {
       isLoading.value = false;
     }
+  }
+
+  // Family search and filtering methods
+  void searchFamilies(String query) {
+    searchText.value = query;
+    _applyFilters();
+  }
+
+  void setFilter(String filter) {
+    selectedFilter.value = filter;
+    _applyFilters();
+  }
+
+  void _applyFilters() {
+    logger.i("Applying filters - enrollments.length: ${enrollments.length}");
+    logger.i(
+        "Search text: '${searchText.value}', Filter: '${selectedFilter.value}'");
+
+    var filtered = enrollments.where((family) {
+      // Search filter
+      if (searchText.value.isNotEmpty) {
+        final familyData = family['family'] as Map<String, dynamic>;
+        final members = family['members'] as List<dynamic>;
+        final headMember = members.isNotEmpty ? members.first : null;
+
+        final searchLower = searchText.value.toLowerCase();
+        final chfid = (familyData['uuid'] ?? '').toString().toLowerCase();
+        final memberName = (headMember?['name'] ?? '').toString().toLowerCase();
+        final phone = (headMember?['phone'] ?? '').toString().toLowerCase();
+
+        if (!chfid.contains(searchLower) &&
+            !memberName.contains(searchLower) &&
+            !phone.contains(searchLower)) {
+          return false;
+        }
+      }
+
+      // Status filter
+      if (selectedFilter.value != 'All') {
+        final familyData = family['family'] as Map<String, dynamic>;
+        final status = _getFamilyStatus(familyData);
+        if (status != selectedFilter.value) {
+          return false;
+        }
+      }
+
+      return true;
+    }).toList();
+
+    logger.i("Filtered result: ${filtered.length} families");
+    filteredEnrollments.value = filtered;
+  }
+
+  String _getFamilyStatus(Map<String, dynamic> familyData) {
+    final syncStatus = familyData['sync'] ?? 0;
+    final paymentStatus = familyData['payment_status'] ?? 'PENDING';
+
+    if (paymentStatus == 'PAID' && syncStatus == 1) {
+      return 'Active';
+    } else if (paymentStatus == 'PENDING') {
+      return 'Pending Payment';
+    } else if (syncStatus == 0) {
+      return 'Pending Sync';
+    } else {
+      return 'Inactive';
+    }
+  }
+
+  // Initialize dummy family data for testing
+  void initializeDummyFamilies() {
+    logger.i("Initializing dummy families...");
+    final dummyFamilies = [
+      {
+        'family': {
+          'id': 1,
+          'uuid': 'CBH001234567890',
+          'family_type': 'H',
+          'confirmation_type': 'C',
+          'confirmation_number': 'CONF001',
+          'address_detail': 'Kebele 01, Addis Ababa',
+          'poverty_status': false,
+          'membership_type': 'Paying',
+          'membership_level': 'Level 1',
+          'area_type': 'Urban',
+          'calculated_contribution': 450.0,
+          'region_id': 1,
+          'region_name': 'Addis Ababa',
+          'district_id': 1,
+          'district_name': 'Addis Ketema',
+          'municipality_id': 1,
+          'municipality_name': 'Kebele 01',
+          'village_id': 1,
+          'village_name': 'Sub-City 1',
+          'sync': 1,
+          'payment_status': 'PAID',
+          'enrollment_date': '2024-01-15',
+          'expiry_date': '2024-12-31',
+        },
+        'members': [
+          {
+            'id': 1,
+            'family_id': 1,
+            'chfid': 'CBH001234567890',
+            'name': 'Alemayehu Tadesse',
+            'phone': '+251911123456',
+            'email': 'alemayehu@example.com',
+            'gender': 'Male',
+            'birthdate': '1985-03-15',
+            'marital_status': 'Married',
+            'relationship': 'Head',
+            'disability_status': 'None',
+            'identification_no': 'ID123456789',
+            'is_head': true,
+            'photo_path': null,
+          },
+          {
+            'id': 2,
+            'family_id': 1,
+            'chfid': 'CBH001234567891',
+            'name': 'Meron Alemayehu',
+            'phone': '+251911123457',
+            'email': 'meron@example.com',
+            'gender': 'Female',
+            'birthdate': '1988-07-22',
+            'marital_status': 'Married',
+            'relationship': 'Spouse',
+            'disability_status': 'None',
+            'identification_no': 'ID123456790',
+            'is_head': false,
+            'photo_path': null,
+          },
+          {
+            'id': 3,
+            'family_id': 1,
+            'chfid': 'CBH001234567892',
+            'name': 'Dawit Alemayehu',
+            'phone': '',
+            'email': '',
+            'gender': 'Male',
+            'birthdate': '2010-12-10',
+            'marital_status': 'Single',
+            'relationship': 'Child',
+            'disability_status': 'None',
+            'identification_no': '',
+            'is_head': false,
+            'photo_path': null,
+          },
+        ],
+      },
+      {
+        'family': {
+          'id': 2,
+          'uuid': 'CBH002345678901',
+          'family_type': 'H',
+          'confirmation_type': 'C',
+          'confirmation_number': 'CONF002',
+          'address_detail': 'Kebele 02, Addis Ababa',
+          'poverty_status': true,
+          'membership_type': 'Indigent',
+          'membership_level': 'Level 1',
+          'area_type': 'Urban',
+          'calculated_contribution': 0.0,
+          'region_id': 1,
+          'region_name': 'Addis Ababa',
+          'district_id': 2,
+          'district_name': 'Bole',
+          'municipality_id': 2,
+          'municipality_name': 'Kebele 02',
+          'village_id': 2,
+          'village_name': 'Sub-City 2',
+          'sync': 0,
+          'payment_status': 'PENDING',
+          'enrollment_date': '2024-02-20',
+          'expiry_date': '2025-02-19',
+        },
+        'members': [
+          {
+            'id': 4,
+            'family_id': 2,
+            'chfid': 'CBH002345678901',
+            'name': 'Tigist Bekele',
+            'phone': '+251922334455',
+            'email': 'tigist@example.com',
+            'gender': 'Female',
+            'birthdate': '1992-09-05',
+            'marital_status': 'Single',
+            'relationship': 'Head',
+            'disability_status': 'Physical',
+            'identification_no': 'ID234567890',
+            'is_head': true,
+            'photo_path': null,
+          },
+          {
+            'id': 5,
+            'family_id': 2,
+            'chfid': 'CBH002345678902',
+            'name': 'Sara Tigist',
+            'phone': '',
+            'email': '',
+            'gender': 'Female',
+            'birthdate': '2015-04-18',
+            'marital_status': 'Single',
+            'relationship': 'Child',
+            'disability_status': 'None',
+            'identification_no': '',
+            'is_head': false,
+            'photo_path': null,
+          },
+        ],
+      },
+      {
+        'family': {
+          'id': 3,
+          'uuid': 'CBH003456789012',
+          'family_type': 'H',
+          'confirmation_type': 'C',
+          'confirmation_number': 'CONF003',
+          'address_detail': 'Kebele 03, Oromia',
+          'poverty_status': false,
+          'membership_type': 'Paying',
+          'membership_level': 'Level 2',
+          'area_type': 'Rural',
+          'calculated_contribution': 300.0,
+          'region_id': 2,
+          'region_name': 'Oromia',
+          'district_id': 3,
+          'district_name': 'West Shewa',
+          'municipality_id': 3,
+          'municipality_name': 'Kebele 03',
+          'village_id': 3,
+          'village_name': 'Village A',
+          'sync': 1,
+          'payment_status': 'PAID',
+          'enrollment_date': '2023-12-01',
+          'expiry_date': '2024-11-30',
+        },
+        'members': [
+          {
+            'id': 6,
+            'family_id': 3,
+            'chfid': 'CBH003456789012',
+            'name': 'Getachew Haile',
+            'phone': '+251933445566',
+            'email': 'getachew@example.com',
+            'gender': 'Male',
+            'birthdate': '1978-11-30',
+            'marital_status': 'Married',
+            'relationship': 'Head',
+            'disability_status': 'None',
+            'identification_no': 'ID345678901',
+            'is_head': true,
+            'photo_path': null,
+          },
+          {
+            'id': 7,
+            'family_id': 3,
+            'chfid': 'CBH003456789013',
+            'name': 'Almaz Getachew',
+            'phone': '+251933445567',
+            'email': 'almaz@example.com',
+            'gender': 'Female',
+            'birthdate': '1982-06-12',
+            'marital_status': 'Married',
+            'relationship': 'Spouse',
+            'disability_status': 'None',
+            'identification_no': 'ID345678902',
+            'is_head': false,
+            'photo_path': null,
+          },
+        ],
+      },
+      {
+        'family': {
+          'id': 4,
+          'uuid': 'CBH004567890123',
+          'family_type': 'H',
+          'confirmation_type': 'C',
+          'confirmation_number': 'CONF004',
+          'address_detail': 'Kebele 04, Amhara',
+          'poverty_status': false,
+          'membership_type': 'Paying',
+          'membership_level': 'Level 1',
+          'area_type': 'Rural',
+          'calculated_contribution': 250.0,
+          'region_id': 3,
+          'region_name': 'Amhara',
+          'district_id': 4,
+          'district_name': 'North Gondar',
+          'municipality_id': 4,
+          'municipality_name': 'Kebele 04',
+          'village_id': 4,
+          'village_name': 'Village B',
+          'sync': 0,
+          'payment_status': 'PENDING',
+          'enrollment_date': '2024-03-10',
+          'expiry_date': '2025-03-09',
+        },
+        'members': [
+          {
+            'id': 8,
+            'family_id': 4,
+            'chfid': 'CBH004567890123',
+            'name': 'Yohannes Teshome',
+            'phone': '+251944556677',
+            'email': 'yohannes@example.com',
+            'gender': 'Male',
+            'birthdate': '1965-08-20',
+            'marital_status': 'Widowed',
+            'relationship': 'Head',
+            'disability_status': 'Visual',
+            'identification_no': 'ID456789012',
+            'is_head': true,
+            'photo_path': null,
+          },
+        ],
+      },
+      {
+        'family': {
+          'id': 5,
+          'uuid': 'CBH005678901234',
+          'family_type': 'H',
+          'confirmation_type': 'C',
+          'confirmation_number': 'CONF005',
+          'address_detail': 'Kebele 05, Tigray',
+          'poverty_status': true,
+          'membership_type': 'Indigent',
+          'membership_level': 'Level 1',
+          'area_type': 'Rural',
+          'calculated_contribution': 0.0,
+          'region_id': 4,
+          'region_name': 'Tigray',
+          'district_id': 5,
+          'district_name': 'Central Tigray',
+          'municipality_id': 5,
+          'municipality_name': 'Kebele 05',
+          'village_id': 5,
+          'village_name': 'Village C',
+          'sync': 1,
+          'payment_status': 'PAID',
+          'enrollment_date': '2024-01-05',
+          'expiry_date': '2025-01-04',
+        },
+        'members': [
+          {
+            'id': 9,
+            'family_id': 5,
+            'chfid': 'CBH005678901234',
+            'name': 'Hanan Ahmed',
+            'phone': '+251955667788',
+            'email': 'hanan@example.com',
+            'gender': 'Female',
+            'birthdate': '1990-02-14',
+            'marital_status': 'Divorced',
+            'relationship': 'Head',
+            'disability_status': 'None',
+            'identification_no': 'ID567890123',
+            'is_head': true,
+            'photo_path': null,
+          },
+          {
+            'id': 10,
+            'family_id': 5,
+            'chfid': 'CBH005678901235',
+            'name': 'Eyob Hanan',
+            'phone': '',
+            'email': '',
+            'gender': 'Male',
+            'birthdate': '2012-11-25',
+            'marital_status': 'Single',
+            'relationship': 'Child',
+            'disability_status': 'Hearing',
+            'identification_no': '',
+            'is_head': false,
+            'photo_path': null,
+          },
+          {
+            'id': 11,
+            'family_id': 5,
+            'chfid': 'CBH005678901236',
+            'name': 'Marta Hanan',
+            'phone': '',
+            'email': '',
+            'gender': 'Female',
+            'birthdate': '2014-08-08',
+            'marital_status': 'Single',
+            'relationship': 'Child',
+            'disability_status': 'None',
+            'identification_no': '',
+            'is_head': false,
+            'photo_path': null,
+          },
+        ],
+      },
+    ];
+
+    enrollments.value = dummyFamilies;
+    filteredEnrollments.value = dummyFamilies;
+    logger.i("Dummy families initialized: ${dummyFamilies.length} families");
+  }
+
+  // Manual method to reload dummy data for testing
+  void reloadDummyData() {
+    logger.i("Manually reloading dummy data...");
+    initializeDummyFamilies();
+    SnackBars.success("Success", "Dummy data reloaded successfully!");
+  }
+
+  // Debug method to check current state
+  void debugCurrentState() {
+    logger.i("Current state debug:");
+    logger.i("isLoading: ${isLoading.value}");
+    logger.i("enrollments.length: ${enrollments.length}");
+    logger.i("filteredEnrollments.length: ${filteredEnrollments.length}");
+    logger.i("selectedFilter: ${selectedFilter.value}");
+
+    if (enrollments.isNotEmpty) {
+      logger.i("First enrollment: ${enrollments.first['family']['uuid']}");
+    }
+
+    SnackBars.info("Debug Info",
+        "Loading: ${isLoading.value}, Enrollments: ${enrollments.length}, Filtered: ${filteredEnrollments.length}");
+  }
+
+  // Force refresh the UI
+  void forceRefresh() {
+    logger.i("Forcing UI refresh...");
+    enrollments.refresh();
+    filteredEnrollments.refresh();
+    isLoading.refresh();
+    SnackBars.success("Refresh", "UI refreshed successfully!");
+  }
+
+  // Manually apply filters for debugging
+  void applyFiltersManually() {
+    logger.i("Manually applying filters...");
+    _applyFilters();
+    SnackBars.info("Filters Applied", "Filters applied manually");
+  }
+
+  // Reset everything and reinitialize
+  void resetAndReinitialize() {
+    logger.i("Resetting and reinitializing...");
+
+    // Clear all data
+    enrollments.clear();
+    filteredEnrollments.clear();
+    searchText.value = '';
+    selectedFilter.value = 'All';
+    isLoading.value = false;
+
+    // Reinitialize dummy data
+    initializeDummyFamilies();
+
+    SnackBars.success("Reset Complete", "Data reset and reinitialized!");
   }
 
   @override

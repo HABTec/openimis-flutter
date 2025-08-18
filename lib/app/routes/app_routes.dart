@@ -17,6 +17,9 @@ abstract class Routes {
   static const ENROLLMENT = _Paths.ENROLLMENT;
   static const ENROLLMENT_LIST = _Paths.ENROLLMENT_LIST;
   static const ENHANCED_ENROLLMENT = _Paths.ENHANCED_ENROLLMENT;
+  static const FAMILY_DETAIL = _Paths.FAMILY_DETAIL;
+  static const SYNC_DETAIL = _Paths.SYNC_DETAIL;
+  static const SYNC_LIST = _Paths.SYNC_LIST;
   static const SYNC_STATUS = _Paths.SYNC_STATUS;
   static const SETTINGS = _Paths.SETTINGS;
 }
@@ -31,6 +34,9 @@ abstract class _Paths {
   static const ENROLLMENT = '/enrollment';
   static const ENROLLMENT_LIST = '/enrollment-list';
   static const ENHANCED_ENROLLMENT = '/enhanced-enrollment';
+  static const FAMILY_DETAIL = '/family-detail';
+  static const SYNC_DETAIL = '/sync-detail';
+  static const SYNC_LIST = '/sync-list';
   static const SYNC_STATUS = '/sync-status';
   static const PUBLIC_ENROLLMENT = '/public-enrollment';
   static const SEARCH = '/search';

@@ -67,6 +67,16 @@ class SyncStatusView extends StatelessWidget {
 
                 // Failed Operations Section
                 _buildFailedOperationsSection(controller),
+
+                SizedBox(height: 20.h),
+
+                // Synced Families Section
+                _buildSyncedFamiliesSection(controller),
+
+                SizedBox(height: 20.h),
+
+                // Synced Insurees Section
+                _buildSyncedInsureesSection(controller),
               ],
             ),
           ),
@@ -95,18 +105,26 @@ class SyncStatusView extends StatelessWidget {
               children: [
                 Expanded(
                   child: _buildStatItem(
-                    'Families',
+                    'Families Pending',
                     controller.stats['families_pending']?.toString() ?? '0',
                     controller.stats['families_total']?.toString() ?? '0',
                     Colors.blue,
+                    onTap: () => Get.toNamed('/sync-list', arguments: {
+                      'entity': 'FAMILY',
+                      'status': 0,
+                    }),
                   ),
                 ),
                 Expanded(
                   child: _buildStatItem(
-                    'Members',
+                    'Members Pending',
                     controller.stats['insurees_pending']?.toString() ?? '0',
                     controller.stats['insurees_total']?.toString() ?? '0',
                     Colors.green,
+                    onTap: () => Get.toNamed('/sync-list', arguments: {
+                      'entity': 'INSUREE',
+                      'status': 0,
+                    }),
                   ),
                 ),
               ],
@@ -116,18 +134,55 @@ class SyncStatusView extends StatelessWidget {
               children: [
                 Expanded(
                   child: _buildStatItem(
-                    'Synced',
-                    '${(controller.stats['families_synced'] ?? 0) + (controller.stats['insurees_synced'] ?? 0)}',
-                    '${(controller.stats['families_total'] ?? 0) + (controller.stats['insurees_total'] ?? 0)}',
+                    'Families Synced',
+                    controller.stats['families_synced']?.toString() ?? '0',
+                    controller.stats['families_total']?.toString() ?? '0',
                     Colors.green,
+                    onTap: () => Get.toNamed('/sync-list', arguments: {
+                      'entity': 'FAMILY',
+                      'status': 1,
+                    }),
                   ),
                 ),
                 Expanded(
                   child: _buildStatItem(
-                    'Failed',
-                    '${(controller.stats['families_failed'] ?? 0) + (controller.stats['insurees_failed'] ?? 0)}',
-                    '${(controller.stats['families_total'] ?? 0) + (controller.stats['insurees_total'] ?? 0)}',
+                    'Members Synced',
+                    controller.stats['insurees_synced']?.toString() ?? '0',
+                    controller.stats['insurees_total']?.toString() ?? '0',
+                    Colors.teal,
+                    onTap: () => Get.toNamed('/sync-list', arguments: {
+                      'entity': 'INSUREE',
+                      'status': 1,
+                    }),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16.h),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatItem(
+                    'Families Failed',
+                    controller.stats['families_failed']?.toString() ?? '0',
+                    controller.stats['families_total']?.toString() ?? '0',
                     Colors.red,
+                    onTap: () => Get.toNamed('/sync-list', arguments: {
+                      'entity': 'FAMILY',
+                      'status': 2,
+                    }),
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    'Members Failed',
+                    controller.stats['insurees_failed']?.toString() ?? '0',
+                    controller.stats['insurees_total']?.toString() ?? '0',
+                    Colors.redAccent,
+                    onTap: () => Get.toNamed('/sync-list', arguments: {
+                      'entity': 'INSUREE',
+                      'status': 2,
+                    }),
                   ),
                 ),
               ],
@@ -138,43 +193,48 @@ class SyncStatusView extends StatelessWidget {
     );
   }
 
-  Widget _buildStatItem(String label, String value, String total, Color color) {
-    return Column(
-      children: [
-        Container(
-          width: 60.w,
-          height: 60.w,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(30.w),
-          ),
-          child: Center(
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: 20.sp,
-                fontWeight: FontWeight.bold,
-                color: color,
+  Widget _buildStatItem(String label, String value, String total, Color color,
+      {VoidCallback? onTap}) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(8.r),
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            width: 60.w,
+            height: 60.w,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(30.w),
+            ),
+            child: Center(
+              child: Text(
+                value,
+                style: TextStyle(
+                  fontSize: 20.sp,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
               ),
             ),
           ),
-        ),
-        SizedBox(height: 8.h),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12.sp,
-            fontWeight: FontWeight.w500,
+          SizedBox(height: 8.h),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.sp,
+              fontWeight: FontWeight.w500,
+            ),
           ),
-        ),
-        Text(
-          'of $total',
-          style: TextStyle(
-            fontSize: 10.sp,
-            color: Colors.grey,
+          Text(
+            'of $total',
+            style: TextStyle(
+              fontSize: 10.sp,
+              color: Colors.grey,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -336,6 +396,28 @@ class SyncStatusView extends StatelessWidget {
     );
   }
 
+  Widget _buildSyncedFamiliesSection(SyncStatusController controller) {
+    if (controller.syncedFamilies.isEmpty) {
+      return SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Synced Families (${controller.syncedFamilies.length})',
+          style: TextStyle(
+            fontSize: 16.sp,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        SizedBox(height: 12.h),
+        ...controller.syncedFamilies
+            .map((family) => _buildFamilyCard(family, controller)),
+      ],
+    );
+  }
+
   Widget _buildPendingInsureesSection(SyncStatusController controller) {
     if (controller.pendingInsurees.isEmpty) {
       return SizedBox.shrink();
@@ -353,6 +435,28 @@ class SyncStatusView extends StatelessWidget {
         ),
         SizedBox(height: 12.h),
         ...controller.pendingInsurees
+            .map((insuree) => _buildInsureeCard(insuree, controller)),
+      ],
+    );
+  }
+
+  Widget _buildSyncedInsureesSection(SyncStatusController controller) {
+    if (controller.syncedInsurees.isEmpty) {
+      return SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Synced Members (${controller.syncedInsurees.length})',
+          style: TextStyle(
+            fontSize: 16.sp,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        SizedBox(height: 12.h),
+        ...controller.syncedInsurees
             .map((insuree) => _buildInsureeCard(insuree, controller)),
       ],
     );
@@ -424,6 +528,13 @@ class SyncStatusView extends StatelessWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            IconButton(
+              icon: Icon(Icons.info_outline, color: Colors.blueGrey),
+              onPressed: () => Get.toNamed(
+                '/sync-detail',
+                arguments: {'entityType': 'FAMILY', 'entity': family},
+              ),
+            ),
             if (isError)
               IconButton(
                 icon: Icon(Icons.refresh, color: Colors.blue),
@@ -474,6 +585,13 @@ class SyncStatusView extends StatelessWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            IconButton(
+              icon: Icon(Icons.info_outline, color: Colors.blueGrey),
+              onPressed: () => Get.toNamed(
+                '/sync-detail',
+                arguments: {'entityType': 'INSUREE', 'entity': insuree},
+              ),
+            ),
             if (isError)
               IconButton(
                 icon: Icon(Icons.refresh, color: Colors.blue),
