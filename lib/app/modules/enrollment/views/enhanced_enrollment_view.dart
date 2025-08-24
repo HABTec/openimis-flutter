@@ -169,39 +169,39 @@ class EnhancedEnrollmentView extends StatelessWidget {
             ),
             SizedBox(height: 16.h),
 
-            // CHF ID Format Selection
-            Card(
-              child: Padding(
-                padding: EdgeInsets.all(16.w),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'CHF ID Format',
-                      style: TextStyle(
-                          fontSize: 16.sp, fontWeight: FontWeight.w500),
-                    ),
-                    SizedBox(height: 8.h),
-                    Obx(() => Column(
-                          children: controller.chfIdFormatOptions.map((option) {
-                            return RadioListTile<int>(
-                              title: Text(option['label']!),
-                              value: int.parse(option['value']!),
-                              groupValue: controller.chfIdFormat.value,
-                              onChanged: (value) {
-                                if (value != null) {
-                                  controller.chfIdFormat.value = value;
-                                }
-                              },
-                            );
-                          }).toList(),
-                        )),
-                  ],
-                ),
-              ),
-            ),
+            // // CHF ID Format Selection
+            // Card(
+            //   child: Padding(
+            //     padding: EdgeInsets.all(16.w),
+            //     child: Column(
+            //       crossAxisAlignment: CrossAxisAlignment.start,
+            //       children: [
+            //         Text(
+            //           'CHF ID Format',
+            //           style: TextStyle(
+            //               fontSize: 16.sp, fontWeight: FontWeight.w500),
+            //         ),
+            //         SizedBox(height: 8.h),
+            //         Obx(() => Column(
+            //               children: controller.chfIdFormatOptions.map((option) {
+            //                 return RadioListTile<int>(
+            //                   title: Text(option['label']!),
+            //                   value: int.parse(option['value']!),
+            //                   groupValue: controller.chfIdFormat.value,
+            //                   onChanged: (value) {
+            //                     if (value != null) {
+            //                       controller.chfIdFormat.value = value;
+            //                     }
+            //                   },
+            //                 );
+            //               }).toList(),
+            //             )),
+            //       ],
+            //     ),
+            //   ),
+            // ),
 
-            SizedBox(height: 16.h),
+            // SizedBox(height: 16.h),
 
             // Personal Information
             TextFormField(
@@ -758,7 +758,6 @@ class EnhancedEnrollmentView extends StatelessWidget {
                   Obx(() {
                     final levelTypes = controller.availableMembershipTypes
                         .map((mt) => mt.levelType)
-                        .where((lt) => lt != null)
                         .toSet()
                         .toList();
 

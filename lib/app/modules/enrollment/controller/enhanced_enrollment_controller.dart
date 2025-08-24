@@ -870,7 +870,7 @@ class EnhancedEnrollmentController extends GetxController {
       // Add family members
       for (final member in familyMembers) {
         member.localFamilyId = localFamilyId;
-        member.familyId = localFamilyId;
+        member.familyId = localFamilyId.toString();
         final memberResult = await _insureeService.createInsuree(member);
         if (memberResult.error) {
           SnackBars.warning(

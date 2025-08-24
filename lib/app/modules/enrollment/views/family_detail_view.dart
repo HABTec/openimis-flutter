@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
+import 'package:openimis_app/app/data/remote/dto/enrollment/insuree_dto.dart';
 import '../../../core/theme/app_theme.dart';
 import '../controller/enrollment_controller.dart';
 
@@ -289,12 +292,20 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
 
   Widget _buildFamilyInfoTab(Map<String, dynamic> familyDetails, String mode) {
     final family = familyDetails['family'];
-    final insurees = familyDetails['insurees'] as List;
+    final insurees = familyDetails['insurees'] as List<dynamic>;
     final products = familyDetails['products'] as List;
-    final headInsuree = insurees.isNotEmpty
-        ? insurees.firstWhere((i) => i.head == true,
-            orElse: () => insurees.first)
-        : null;
+
+    // Find head insuree or use first insuree if no head found
+    dynamic headInsuree;
+    if (insurees.isNotEmpty) {
+      try {
+        headInsuree = insurees.firstWhere((i) => i.head == true);
+      } catch (e) {
+        headInsuree = insurees.first;
+      }
+    } else {
+      headInsuree = null;
+    }
 
     return SingleChildScrollView(
       padding: EdgeInsets.all(16.w),
@@ -331,10 +342,11 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
             'Location Information',
             [
               _buildInfoRow(
-                  'Location ID', family?.locationId?.toString() ?? 'N/A',
-                  editable: mode != 'view'),
-              _buildInfoRow('JSON Extensions', family?.jsonExt ?? '{}',
-                  editable: mode != 'view'),
+                  'Location ID',
+                  family?.locationId?.toString() ??
+                      jsonDecode(family?.jsonExt)?["uuid"] ??
+                      'N/A',
+                  editable: mode != 'view')
             ],
           ),
           SizedBox(height: 16.h),
@@ -404,31 +416,15 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
 
     return Column(
       children: [
-        if (mode != 'view')
-          Container(
-            padding: EdgeInsets.all(16.w),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _addNewMember(familyDetails),
-                    icon: Icon(Icons.person_add),
-                    label: Text('Add New Member'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFF036273),
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
         Expanded(
           child: ListView.builder(
             padding: EdgeInsets.symmetric(horizontal: 16.w),
             itemCount: insurees.length,
             itemBuilder: (context, index) {
               final insuree = insurees[index];
+              if (insuree is InsureeDto) {
+                return _buildMemberCard(insuree.toJson(), mode, index);
+              }
               return _buildMemberCard(insuree, mode, index);
             },
           ),
@@ -438,8 +434,10 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
   }
 
   Widget _buildPaymentTab(Map<String, dynamic> family) {
-    final familyData = family['family'] as Map<String, dynamic>;
-    final members = family['members'] as List<dynamic>;
+    final familyData = (family['family'] is FamilyDto)
+        ? family['family'].toJson()
+        : family['family'] as Map<String, dynamic>;
+    final members = (family['members'] ?? []) as List<dynamic>;
 
     return SingleChildScrollView(
       padding: EdgeInsets.all(16.w),
@@ -452,14 +450,15 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
             [
               _buildInfoRow('Number of Members', '${members.length}',
                   editable: false),
-              _buildInfoRow('Membership Level', familyData['membership_level'],
+              _buildInfoRow(
+                  'Membership Level', familyData['membership_level'] ?? '1',
                   editable: false),
-              _buildInfoRow('Area Type', familyData['area_type'],
+              _buildInfoRow('Area Type', familyData['area_type'] ?? '1',
                   editable: false),
               _buildInfoRow('Base Rate per Member', '150 ETB', editable: false),
               Divider(),
               _buildInfoRow('Total Contribution',
-                  '${familyData['calculated_contribution']} ETB',
+                  '${familyData['calculated_contribution'] ?? 150}  ETB',
                   editable: false, isTotal: true),
             ],
           ),
@@ -594,6 +593,7 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
   }
 
   Widget _buildMemberCard(Map<String, dynamic> member, String mode, int index) {
+    print("member: $member");
     return Card(
       margin: EdgeInsets.only(bottom: 12.h),
       elevation: 1,
@@ -607,8 +607,9 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
               children: [
                 CircleAvatar(
                   radius: 25.r,
-                  backgroundColor:
-                      member['is_head'] ? Color(0xFF036273) : Colors.grey[300],
+                  backgroundColor: (member['is_head'] ?? false)
+                      ? Color(0xFF036273)
+                      : Colors.grey[300],
                   child: member['photo_path'] != null
                       ? ClipOval(
                           child: Image.asset(member['photo_path'],
@@ -632,13 +633,13 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
                       Row(
                         children: [
                           Text(
-                            member['name'],
+                            member['otherNames'] + ' ' + member['lastName'],
                             style: TextStyle(
                               fontSize: 16.sp,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          if (member['is_head'])
+                          if (member['head'] == true)
                             Container(
                               margin: EdgeInsets.only(left: 8.w),
                               padding: EdgeInsets.symmetric(
@@ -659,14 +660,14 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
                         ],
                       ),
                       Text(
-                        'CBHI ID: ${member['chfid']}',
+                        'CBHI ID: ${member['chfId']}',
                         style: TextStyle(
                           fontSize: 12.sp,
                           color: Colors.grey[600],
                         ),
                       ),
                       Text(
-                        '${member['gender']} • ${member['relationship']}',
+                        '${member['genderId']} •  R/n ${member['relationshipId'] != null ? member['relationshipId'] : 'Head'}',
                         style: TextStyle(
                           fontSize: 12.sp,
                           color: Colors.grey[600],
@@ -693,13 +694,13 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
             SizedBox(height: 8.h),
             Row(
               children: [
-                _buildMemberInfo(Icons.cake, member['birthdate']),
+                _buildMemberInfo(Icons.cake, member['dob']),
                 SizedBox(width: 16.w),
                 _buildMemberInfo(Icons.phone,
                     member['phone'].isNotEmpty ? member['phone'] : 'No phone'),
               ],
             ),
-            if (member['disability_status'] != 'None')
+            if (member['disabilityStatus'] != 'None')
               Padding(
                 padding: EdgeInsets.only(top: 8.h),
                 child: Container(
@@ -715,7 +716,7 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
                           size: 16.sp, color: Colors.orange),
                       SizedBox(width: 4.w),
                       Text(
-                        'Disability: ${member['disability_status']}',
+                        'Disability: ${member['disabilityStatus']}',
                         style: TextStyle(
                           fontSize: 12.sp,
                           color: Colors.orange.shade800,

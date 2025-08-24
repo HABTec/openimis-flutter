@@ -36,8 +36,6 @@ class ProductService {
                 enrolmentPeriodEndDate
                 membershipTypes {
                   id
-                  region
-                  district
                   levelType
                   levelIndex
                   price
@@ -118,8 +116,6 @@ class ProductService {
               await db.insert('membership_types', {
                 'id': membershipType.id,
                 'product_id': product.id,
-                'region': membershipType.region,
-                'district': membershipType.district,
                 'level_type': membershipType.levelType,
                 'level_index': membershipType.levelIndex,
                 'price': membershipType.price,
@@ -160,8 +156,6 @@ class ProductService {
             membershipTypesData.map((mtMap) {
           return MembershipTypeDto(
             id: mtMap['id'],
-            region: mtMap['region'],
-            district: mtMap['district'],
             levelType: mtMap['level_type'],
             levelIndex: mtMap['level_index'],
             price: mtMap['price'],

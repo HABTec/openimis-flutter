@@ -75,7 +75,7 @@ class InsureeDto implements IDto {
   int? professionId;
   int? educationId;
   String? typeOfIdId; // D, N, P, V
-  int? familyId; // Remote family ID after sync
+  String? familyId; // Remote family ID after sync
   int? relationshipId;
   String? status; // AC (Active)
   String? disabilityStatus; // Disability status from the 15-item list
@@ -103,7 +103,7 @@ class InsureeDto implements IDto {
     int? professionId,
     int? educationId,
     String? typeOfIdId,
-    int? familyId,
+    String? familyId,
     int? relationshipId,
     String? status,
     String? disabilityStatus,
@@ -131,7 +131,7 @@ class InsureeDto implements IDto {
         professionId: professionId ?? this.professionId,
         educationId: educationId ?? this.educationId,
         typeOfIdId: typeOfIdId ?? this.typeOfIdId,
-        familyId: familyId ?? this.familyId,
+        familyId: familyId ?? this.familyId?.toString(),
         relationshipId: relationshipId ?? this.relationshipId,
         status: status ?? this.status,
         disabilityStatus: disabilityStatus ?? this.disabilityStatus,
@@ -163,7 +163,7 @@ class InsureeDto implements IDto {
     map['professionId'] = professionId;
     map['educationId'] = educationId;
     map['typeOfIdId'] = typeOfIdId;
-    map['familyId'] = familyId;
+    map['familyId'] = familyId?.toString();
     map['relationshipId'] = relationshipId;
     map['status'] = status;
     map['disabilityStatus'] = disabilityStatus;
@@ -194,7 +194,7 @@ class InsureeDto implements IDto {
       'professionId': professionId,
       'educationId': educationId,
       'typeOfIdId': typeOfIdId ?? 'D',
-      'familyId': familyId,
+      'familyId': familyId?.toString(),
       'relationshipId': relationshipId,
       'status': status ?? 'AC',
       'jsonExt': jsonExt ?? '{}',
@@ -278,7 +278,7 @@ class FamilyDto implements IDto {
     confirmationNo = json['confirmationNo'];
     jsonExt = json['jsonExt'];
     syncStatus = json['syncStatus'] ?? 0;
-    remoteFamilyId = json['remoteFamilyId'];
+    remoteFamilyId = json['remoteFamilyId']?.toString();
     createdAt = json['createdAt'];
     updatedAt = json['updatedAt'];
     syncError = json['syncError'];
@@ -294,7 +294,7 @@ class FamilyDto implements IDto {
   String? confirmationNo;
   String? jsonExt;
   int? syncStatus; // 0 = pending, 1 = synced, 2 = failed
-  int? remoteFamilyId; // Remote family ID after sync
+  String? remoteFamilyId; // Remote family ID after sync
   String? createdAt;
   String? updatedAt;
   String? syncError;
@@ -310,7 +310,7 @@ class FamilyDto implements IDto {
     String? confirmationNo,
     String? jsonExt,
     int? syncStatus,
-    int? remoteFamilyId,
+    String? remoteFamilyId,
     String? createdAt,
     String? updatedAt,
     String? syncError,
@@ -346,7 +346,7 @@ class FamilyDto implements IDto {
     map['confirmationNo'] = confirmationNo;
     map['jsonExt'] = jsonExt;
     map['syncStatus'] = syncStatus;
-    map['remoteFamilyId'] = remoteFamilyId;
+    map['remoteFamilyId'] = remoteFamilyId?.toString();
     map['createdAt'] = createdAt;
     map['updatedAt'] = updatedAt;
     map['syncError'] = syncError;

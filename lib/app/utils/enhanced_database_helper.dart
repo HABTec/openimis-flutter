@@ -8,6 +8,7 @@ import '../data/remote/dto/enrollment/family_type_dto.dart';
 import '../data/remote/dto/enrollment/confirmation_type_dto.dart';
 import '../data/remote/dto/enrollment/location_hierarchy_dto.dart';
 import '../data/remote/dto/enrollment/insuree_dto.dart';
+import '../data/remote/dto/enrollment/family_dto.dart' as family_dto;
 
 class EnhancedDatabaseHelper {
   static final EnhancedDatabaseHelper _instance =
@@ -367,6 +368,138 @@ class EnhancedDatabaseHelper {
               type: map['type'] as String?,
             ))
         .toList();
+  }
+
+  // Family caching methods - using existing families table
+  Future<void> cacheFamilies(List<family_dto.FamilyNode> families) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      for (var family in families) {
+        // Check if family already exists by remote_id
+        final existingFamily = await txn.query(
+          'families',
+          where: 'remote_id = ?',
+          whereArgs: [family.id],
+          limit: 1,
+        );
+
+        if (existingFamily.isEmpty) {
+          // Insert new family
+          final familyId = await txn.insert('families', {
+            'remote_id': family.id,
+            'poverty': family.poverty == true ? 1 : 0,
+            'confirmation_no': family.confirmationNo ?? '',
+            'family_type_id': 'H', // Default family type
+            'confirmation_type_id': 'A', // Default confirmation type
+            'json_ext': jsonEncode({
+              'uuid': family.uuid,
+              'validity_from': family.validityFrom,
+              'validity_to': family.validityTo,
+            }),
+            'sync_status': 1, // Mark as synced since it's from backend
+            'created_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
+          });
+
+          // Insert head insuree if exists
+          if (family.headInsuree != null) {
+            await txn.insert('insurees', {
+              'remote_id': family.headInsuree!.id,
+              'chf_id': family.headInsuree!.chfId ?? '',
+              'last_name': family.headInsuree!.lastName ?? '',
+              'other_names': family.headInsuree!.otherNames ?? '',
+              'gender_id': 'M', // Default gender
+              'dob': family.headInsuree!.dob ?? '',
+              'head': 1, // This is the head insuree
+              'marital': 'S', // Default marital status
+              'passport': '', // Default passport
+              'phone': family.headInsuree!.phone ?? '',
+              'email': family.headInsuree!.email ?? '',
+              'local_family_id': familyId,
+              'remote_family_id': family.id,
+              'status': 'AC', // Default status
+              'json_ext': jsonEncode({
+                'uuid': family.headInsuree!.uuid,
+              }),
+              'sync_status': 1, // Mark as synced
+              'created_at': DateTime.now().toIso8601String(),
+              'updated_at': DateTime.now().toIso8601String(),
+            });
+          }
+        }
+      }
+    });
+  }
+
+  // Get families from existing families table (converted to FamilyNode format)
+  Future<List<family_dto.FamilyNode>> getCachedFamilies() async {
+    final db = await database;
+    final results = await db.rawQuery('''
+      SELECT 
+        f.local_id, f.remote_id, f.poverty, f.confirmation_no, 
+        f.json_ext as family_json,
+        i.remote_id as head_remote_id, i.chf_id, 
+        i.last_name, i.other_names, i.email, i.phone, i.dob,
+        i.json_ext as insuree_json
+      FROM families f
+      LEFT JOIN insurees i ON f.local_id = i.local_family_id AND i.head = 1
+      WHERE f.remote_id IS NOT NULL
+      ORDER BY f.updated_at DESC
+    ''');
+
+    return results.map((map) {
+      // Parse family JSON data
+      Map<String, dynamic> familyJson = {};
+      if (map['family_json'] != null) {
+        try {
+          familyJson = jsonDecode(map['family_json'] as String);
+        } catch (e) {
+          print('Error parsing family JSON: $e');
+        }
+      }
+
+      // Parse insuree JSON data
+      Map<String, dynamic> insureeJson = {};
+      if (map['insuree_json'] != null) {
+        try {
+          insureeJson = jsonDecode(map['insuree_json'] as String);
+        } catch (e) {
+          print('Error parsing insuree JSON: $e');
+        }
+      }
+
+      final headInsuree = map['head_remote_id'] != null
+          ? family_dto.HeadInsuree(
+              id: map['head_remote_id'] as String?,
+              uuid: insureeJson['uuid'] as String?,
+              chfId: map['chf_id'] as String?,
+              lastName: map['last_name'] as String?,
+              otherNames: map['other_names'] as String?,
+              email: map['email'] as String?,
+              phone: map['phone'] as String?,
+              dob: map['dob'] as String?,
+            )
+          : null;
+
+      return family_dto.FamilyNode(
+        id: map['remote_id'] as String?,
+        uuid: familyJson['uuid'] as String?,
+        poverty: (map['poverty'] as int?) == 1,
+        confirmationNo: map['confirmation_no'] as String?,
+        validityFrom: familyJson['validity_from'] as String?,
+        validityTo: familyJson['validity_to'] as String?,
+        headInsuree: headInsuree,
+        location: null, // Location data not stored in existing table
+      );
+    }).toList();
+  }
+
+  // Get families by location (this would need location data in the families table)
+  Future<List<family_dto.FamilyNode>> getCachedFamiliesByLocation(
+      String locationCode) async {
+    // For now, return all families since location data is not stored in the existing table
+    // In the future, you might want to add location_id to the families table
+    return await getCachedFamilies();
   }
 
   Future<void> cacheConfirmationTypes(
@@ -791,7 +924,7 @@ class EnhancedDatabaseHelper {
               educationId: map['education_id'] as int?,
               typeOfIdId: map['type_of_id_id'] as String?,
               localFamilyId: map['local_family_id'] as int?,
-              familyId: map['remote_family_id'] as int?,
+              familyId: map['remote_family_id'] as String?,
               relationshipId: map['relationship_id'] as int?,
               status: map['status'] as String?,
               jsonExt: map['json_ext'] as String?,
@@ -836,7 +969,7 @@ class EnhancedDatabaseHelper {
               educationId: map['education_id'] as int?,
               typeOfIdId: map['type_of_id_id'] as String?,
               localFamilyId: map['local_family_id'] as int?,
-              familyId: map['remote_family_id'] as int?,
+              familyId: map['remote_family_id'].toString() as String?,
               relationshipId: map['relationship_id'] as int?,
               status: map['status'] as String?,
               jsonExt: map['json_ext'] as String?,
@@ -891,7 +1024,7 @@ class EnhancedDatabaseHelper {
       syncStatus: map['sync_status'] as int?,
       createdAt: map['created_at'] as String?,
       updatedAt: map['updated_at'] as String?,
-      remoteFamilyId: map['remote_id'] as int?,
+      remoteFamilyId: map['remote_id'] as String?,
       syncError: map['sync_error'] as String?,
     );
     if (map['head_local_id'] != null) {
@@ -959,7 +1092,7 @@ class EnhancedDatabaseHelper {
       educationId: map['education_id'] as int?,
       typeOfIdId: map['type_of_id_id'] as String?,
       localFamilyId: map['local_family_id'] as int?,
-      familyId: map['remote_family_id'] as int?,
+      familyId: map['remote_family_id'] as String?,
       relationshipId: map['relationship_id'] as int?,
       status: map['status'] as String?,
       jsonExt: map['json_ext'] as String?,
@@ -1045,8 +1178,7 @@ class EnhancedDatabaseHelper {
         await db.query('family_types').then((rows) => rows.length);
     final confirmationTypesCount =
         await db.query('confirmation_types').then((rows) => rows.length);
-    final locationsCount =
-        await db.query('locations').then((rows) => rows.length);
+
     final productsCount =
         await db.query('products').then((rows) => rows.length);
     return professionsCount == 0 ||
@@ -1054,7 +1186,6 @@ class EnhancedDatabaseHelper {
         relationsCount == 0 ||
         familyTypesCount == 0 ||
         confirmationTypesCount == 0 ||
-        locationsCount == 0 ||
         productsCount == 0;
   }
 
@@ -1242,7 +1373,7 @@ class EnhancedDatabaseHelper {
               educationId: map['education_id'] as int?,
               typeOfIdId: map['type_of_id_id'] as String?,
               localFamilyId: map['local_family_id'] as int?,
-              familyId: map['remote_family_id'] as int?,
+              familyId: map['remote_family_id']?.toString(),
               relationshipId: map['relationship_id'] as int?,
               status: map['status'] as String?,
               disabilityStatus: map['disability_status'] as String?,

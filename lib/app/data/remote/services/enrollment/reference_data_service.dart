@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:openimis_app/app/data/remote/dto/enrollment/product_dto.dart';
 import 'package:openimis_app/app/data/remote/services/enrollment/product_service.dart';
+import 'package:openimis_app/app/data/remote/services/enrollment/family_service.dart';
 import 'package:openimis_app/app/di/locator.dart';
 import '../../api/dio_client.dart';
 import '../../dto/enrollment/profession_dto.dart';
@@ -17,6 +18,7 @@ class ReferenceDataService {
   final DioClient dioClient;
   final EnhancedDatabaseHelper _dbHelper = EnhancedDatabaseHelper();
   final ProductService _productService = getIt.get<ProductService>();
+  final FamilyService _familyService = getIt.get<FamilyService>();
 
   ReferenceDataService({required this.dioClient});
 
@@ -42,6 +44,9 @@ class ReferenceDataService {
         _syncConfirmationTypes(),
         // _syncLocations(),
         _productService.syncProductsIfNeeded(),
+        _familyService.fetchFamilies(),
+        // _familyService.fetchInsurees(),
+        // _policyService.fetchPolicies(),
       ];
 
       final results = await Future.wait(futures);

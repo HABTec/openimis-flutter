@@ -382,7 +382,7 @@ class EnhancedInsureeService {
               educationId: map['education_id'] as int?,
               typeOfIdId: map['type_of_id_id'] as String?,
               localFamilyId: map['local_family_id'] as int?,
-              familyId: map['remote_family_id'] as int?,
+              familyId: map['remote_family_id']?.toString() ?? '',
               relationshipId: map['relationship_id'] as int?,
               status: map['status'] as String?,
               jsonExt: map['json_ext'] as String?,

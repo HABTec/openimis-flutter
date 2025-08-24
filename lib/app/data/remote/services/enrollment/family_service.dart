@@ -4,6 +4,8 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:openimis_app/app/data/remote/api/dio_client.dart';
 import 'package:openimis_app/app/utils/database_helper.dart';
 import 'package:openimis_app/app/utils/api_response.dart';
+import 'package:openimis_app/app/utils/enhanced_database_helper.dart';
+import 'package:openimis_app/app/data/remote/dto/enrollment/family_dto.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:convert'; // Added for jsonDecode
 
@@ -397,5 +399,156 @@ class FamilyService {
       default:
         return maritalStatus.isNotEmpty ? maritalStatus[0].toUpperCase() : 'S';
     }
+  }
+
+  /// Fetch families from backend and cache them locally
+  Future<ApiResponse> fetchFamilies({int first = 10}) async {
+    try {
+      if (!await _isOnline()) {
+        return ApiResponse.failure('No internet connection');
+      }
+
+      final String query = '''
+        query {
+          families(first: $first, orderBy: ["-validityFrom"]) {
+            totalCount
+            pageInfo {
+              hasNextPage
+              hasPreviousPage
+              startCursor
+              endCursor
+            }
+            edges {
+              node {
+                id
+                uuid
+                poverty
+                confirmationNo
+                validityFrom
+                validityTo
+                headInsuree {
+                  id
+                  uuid
+                  chfId
+                  lastName
+                  otherNames
+                  email
+                  phone
+                  dob
+                }
+                location {
+                  id
+                  uuid
+                  code
+                  name
+                  type
+                  parent {
+                    id
+                    uuid
+                    code
+                    name
+                    type
+                    parent {
+                      id
+                      uuid
+                      code
+                      name
+                      type
+                      parent {
+                        id
+                        uuid
+                        code
+                        name
+                        type
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ''';
+
+      final response =
+          await dioClient.post('/api/graphql', data: {'query': query});
+
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        // Parse the response using our DTOs
+        final familyResponse = FamilyResponse.fromJson(response.data);
+        final families = getFamiliesFromResponse(familyResponse);
+
+        if (families.isNotEmpty) {
+          // Cache families in local database
+          final dbHelper = EnhancedDatabaseHelper();
+          await dbHelper.cacheFamilies(families);
+
+          return ApiResponse.success({
+            'families': families,
+            'totalCount': familyResponse.data?.families?.totalCount ?? 0,
+            'hasNextPage':
+                familyResponse.data?.families?.pageInfo?.hasNextPage ?? false,
+          },
+              message:
+                  'Successfully fetched and cached ${families.length} families');
+        } else {
+          return ApiResponse.success({
+            'families': [],
+            'totalCount': 0,
+            'hasNextPage': false,
+          }, message: 'No families found');
+        }
+      }
+
+      final errorMessage =
+          response.data['errors']?[0]?['message'] ?? 'Unknown error';
+      return ApiResponse.failure(errorMessage);
+    } on DioError catch (e) {
+      if (e.response?.data?['errors'] != null) {
+        final errorMessage = e.response!.data['errors'][0]['message'];
+        return ApiResponse.failure(errorMessage);
+      }
+      return ApiResponse.failure(e.message ?? 'Network error');
+    } catch (e) {
+      return ApiResponse.failure('Error fetching families: $e');
+    }
+  }
+
+  /// Get cached families from local database
+  Future<List<FamilyNode>> getCachedFamilies() async {
+    final dbHelper = EnhancedDatabaseHelper();
+    return await dbHelper.getCachedFamilies();
+  }
+
+  /// Get cached families filtered by location
+  /// Note: Location filtering is not available with current table structure
+  Future<List<FamilyNode>> getCachedFamiliesByLocation(
+      String locationCode) async {
+    // Location filtering not available with current table structure
+    // Return empty list for now
+    return [];
+  }
+
+  /// Get families with head insuree issues (for issue list)
+  Future<List<FamilyNode>> getFamiliesWithHeadIssues() async {
+    final dbHelper = EnhancedDatabaseHelper();
+    final allFamilies = await dbHelper.getCachedFamilies();
+
+    // Filter families that have head insuree issues
+    // This could be families without head insuree, or with incomplete head insuree data
+    return allFamilies.where((family) {
+      final headInsuree = family.headInsuree;
+      if (headInsuree == null) return true; // No head insuree
+
+      // Check for missing critical data
+      return headInsuree.chfId == null ||
+          headInsuree.chfId!.isEmpty ||
+          headInsuree.lastName == null ||
+          headInsuree.lastName!.isEmpty ||
+          headInsuree.otherNames == null ||
+          headInsuree.otherNames!.isEmpty ||
+          headInsuree.dob == null ||
+          headInsuree.dob!.isEmpty;
+    }).toList();
   }
 }
