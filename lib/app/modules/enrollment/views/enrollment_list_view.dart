@@ -5,7 +5,104 @@ import '../../../core/theme/app_theme.dart';
 import '../controller/enrollment_controller.dart';
 
 class EnrollmentListView extends GetView<EnrollmentController> {
-  const EnrollmentListView({Key? key}) : super(key: key);
+  final String? actionMode;
+
+  const EnrollmentListView({Key? key, this.actionMode}) : super(key: key);
+
+  String _getTitle() {
+    switch (actionMode) {
+      case 'enroll':
+        return 'Family Enrollment';
+      case 'amend':
+        return 'Amend Family';
+      case 'renew':
+        return 'Renew Family';
+      default:
+        return 'Family Records';
+    }
+  }
+
+  void _handleCardTap(Map<String, dynamic> family) {
+    if (actionMode != null) {
+      // If we're in a specific action mode, perform that action directly
+      switch (actionMode) {
+        case 'enroll':
+          Get.toNamed('/enhanced-enrollment');
+          break;
+        case 'amend':
+          _amendFamilyDetails(family);
+          break;
+        case 'renew':
+          _renewFamilyDetails(family);
+          break;
+        default:
+          _showFamilyOptions(family);
+      }
+    } else {
+      // Default behavior - show options
+      _showFamilyOptions(family);
+    }
+  }
+
+  void _handleFloatingActionButton() {
+    if (actionMode != null) {
+      // If we're in a specific action mode, perform that action
+      switch (actionMode) {
+        case 'enroll':
+          Get.toNamed('/enhanced-enrollment');
+          break;
+        case 'amend':
+        case 'renew':
+          // For amend/renew, we need to select a family first
+          Get.snackbar('Info', 'Please select a family to ${actionMode}');
+          break;
+        default:
+          Get.toNamed('/enhanced-enrollment');
+      }
+    } else {
+      // Default behavior - go to enrollment
+      Get.toNamed('/enhanced-enrollment');
+    }
+  }
+
+  String _getEmptyStateTitle() {
+    switch (actionMode) {
+      case 'enroll':
+        return 'No Families Found';
+      case 'amend':
+        return 'No Families to Amend';
+      case 'renew':
+        return 'No Families to Renew';
+      default:
+        return 'No Family Records';
+    }
+  }
+
+  String _getEmptyStateMessage() {
+    switch (actionMode) {
+      case 'enroll':
+        return 'No existing families found. Start by registering a new family.';
+      case 'amend':
+        return 'No families found that can be amended.';
+      case 'renew':
+        return 'No families found that need renewal.';
+      default:
+        return 'Start by registering a new family';
+    }
+  }
+
+  String _getEmptyStateButtonText() {
+    switch (actionMode) {
+      case 'enroll':
+        return 'Register New Family';
+      case 'amend':
+        return 'Search Families';
+      case 'renew':
+        return 'Search Families';
+      default:
+        return 'Register New Family';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -13,7 +110,7 @@ class EnrollmentListView extends GetView<EnrollmentController> {
       backgroundColor: AppTheme.surfaceColor,
       appBar: AppBar(
         title: Text(
-          'Family Records',
+          _getTitle(),
           style: TextStyle(
             fontSize: 20.sp,
             fontWeight: FontWeight.bold,
@@ -24,18 +121,6 @@ class EnrollmentListView extends GetView<EnrollmentController> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          // IconButton(
-          //   icon: Icon(Icons.bug_report, color: Colors.white),
-          //   onPressed: () => controller.debugCurrentState(),
-          // ),
-          // IconButton(
-          //   icon: Icon(Icons.refresh, color: Colors.white),
-          //   onPressed: () => controller.reloadDummyData(),
-          // ),
-          // IconButton(
-          //   icon: Icon(Icons.sync_problem, color: Colors.white),
-          //   onPressed: () => controller.forceRefresh(),
-          // ),
           IconButton(
             icon: Icon(Icons.filter_list, color: Colors.white),
             onPressed: () => controller.applyFiltersManually(),
@@ -50,7 +135,7 @@ class EnrollmentListView extends GetView<EnrollmentController> {
           ),
           IconButton(
             icon: Icon(Icons.add, color: Colors.white),
-            onPressed: () => Get.toNamed('/enhanced-enrollment'),
+            onPressed: () => _handleFloatingActionButton(),
           ),
         ],
       ),
@@ -74,7 +159,7 @@ class EnrollmentListView extends GetView<EnrollmentController> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => Get.toNamed('/enhanced-enrollment'),
+        onPressed: () => _handleFloatingActionButton(),
         backgroundColor: Color(0xFF036273),
         child: Icon(Icons.add, color: Colors.white),
       ),
@@ -191,7 +276,7 @@ class EnrollmentListView extends GetView<EnrollmentController> {
         borderRadius: BorderRadius.circular(12.r),
       ),
       child: InkWell(
-        onTap: () => _showFamilyOptions(family),
+        onTap: () => _handleCardTap(family),
         borderRadius: BorderRadius.circular(12.r),
         child: Padding(
           padding: EdgeInsets.all(16.w),
@@ -263,30 +348,6 @@ class EnrollmentListView extends GetView<EnrollmentController> {
                 ],
               ),
               SizedBox(height: 12.h),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _buildActionButton(
-                    'View',
-                    Icons.visibility,
-                    () => _viewFamily(family),
-                    Color(0xFF036273),
-                  ),
-                  // Removed duplicate Edit, using Amend for editing
-                  _buildActionButton(
-                    'Renew',
-                    Icons.refresh,
-                    () => _renewFamily(family),
-                    Colors.green,
-                  ),
-                  _buildActionButton(
-                    'Amend',
-                    Icons.edit_note,
-                    () => _amendFamily(family),
-                    Colors.orange,
-                  ),
-                ],
-              ),
             ],
           ),
         ),
@@ -336,37 +397,6 @@ class EnrollmentListView extends GetView<EnrollmentController> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton(
-      String label, IconData icon, VoidCallback onPressed, Color color) {
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(8.r),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8.r),
-          border: Border.all(color: color.withOpacity(0.3)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: 20.sp),
-            SizedBox(height: 2.h),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 10.sp,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -439,18 +469,18 @@ class EnrollmentListView extends GetView<EnrollmentController> {
               ),
             ),
             SizedBox(height: 20.h),
+            _buildOptionTile(Icons.visibility, 'View Details',
+                () => _viewFamilyDetails(family)),
             _buildOptionTile(
-                Icons.visibility, 'View Details', () => _viewFamily(family)),
-            _buildOptionTile(
-                Icons.edit, 'Edit Family', () => _editFamily(family)),
-            _buildOptionTile(
-                Icons.refresh, 'Renew Membership', () => _renewFamily(family)),
-            _buildOptionTile(
-                Icons.edit_note, 'Amend Family', () => _amendFamily(family)),
+                Icons.edit, 'Edit Family', () => _editFamilyDetails(family)),
+            _buildOptionTile(Icons.refresh, 'Renew Membership',
+                () => _renewFamilyDetails(family)),
+            _buildOptionTile(Icons.edit_note, 'Amend Family',
+                () => _amendFamilyDetails(family)),
             _buildOptionTile(Icons.payment, 'Process Payment',
-                () => _processPayment(family)),
+                () => _processPaymentDetails(family)),
             _buildOptionTile(
-                Icons.print, 'Print Card', () => _printCard(family)),
+                Icons.print, 'Print Card', () => _printCardDetails(family)),
             SizedBox(height: 10.h),
           ],
         ),
@@ -482,31 +512,32 @@ class EnrollmentListView extends GetView<EnrollmentController> {
     );
   }
 
-  void _viewFamily(Map<String, dynamic> family) {
+  // Action methods for bottom sheet
+  void _viewFamilyDetails(Map<String, dynamic> family) {
     Get.toNamed('/family-detail',
         arguments: {'family': family, 'mode': 'view'});
   }
 
-  void _editFamily(Map<String, dynamic> family) {
-    _amendFamily(family);
+  void _editFamilyDetails(Map<String, dynamic> family) {
+    _amendFamilyDetails(family);
   }
 
-  void _renewFamily(Map<String, dynamic> family) {
+  void _renewFamilyDetails(Map<String, dynamic> family) {
     Get.toNamed('/family-detail',
         arguments: {'family': family, 'mode': 'renew'});
   }
 
-  void _amendFamily(Map<String, dynamic> family) {
+  void _amendFamilyDetails(Map<String, dynamic> family) {
     Get.toNamed('/family-detail',
         arguments: {'family': family, 'mode': 'amend'});
   }
 
-  void _processPayment(Map<String, dynamic> family) {
+  void _processPaymentDetails(Map<String, dynamic> family) {
     // TODO: Implement payment processing
     Get.snackbar('Info', 'Payment processing not yet implemented');
   }
 
-  void _printCard(Map<String, dynamic> family) {
+  void _printCardDetails(Map<String, dynamic> family) {
     // TODO: Implement card printing
     Get.snackbar('Info', 'Card printing not yet implemented');
   }
@@ -523,7 +554,7 @@ class EnrollmentListView extends GetView<EnrollmentController> {
           ),
           SizedBox(height: 24.h),
           Text(
-            'No Family Records',
+            _getEmptyStateTitle(),
             style: TextStyle(
               fontSize: 24.sp,
               fontWeight: FontWeight.bold,
@@ -532,7 +563,7 @@ class EnrollmentListView extends GetView<EnrollmentController> {
           ),
           SizedBox(height: 12.h),
           Text(
-            'Start by registering a new family',
+            _getEmptyStateMessage(),
             style: TextStyle(
               fontSize: 16.sp,
               color: Colors.grey[500],
@@ -540,10 +571,10 @@ class EnrollmentListView extends GetView<EnrollmentController> {
           ),
           SizedBox(height: 32.h),
           ElevatedButton.icon(
-            onPressed: () => Get.toNamed('/enhanced-enrollment'),
+            onPressed: () => _handleFloatingActionButton(),
             icon: Icon(Icons.add, color: Colors.white),
             label: Text(
-              'Register New Family',
+              _getEmptyStateButtonText(),
               style: TextStyle(
                 fontSize: 16.sp,
                 fontWeight: FontWeight.w600,

@@ -19,6 +19,8 @@ import 'package:logger/logger.dart';
 import '../../../data/remote/base/status.dart';
 import '../../../di/locator.dart';
 import '../../../utils/database_helper.dart';
+import '../../../utils/enhanced_database_helper.dart';
+import '../../../data/remote/dto/enrollment/insuree_dto.dart';
 import '../../../widgets/snackbars.dart';
 import '../views/widgets/qr_view.dart';
 import '../views/widgets/payment_view.dart';
@@ -178,12 +180,21 @@ class EnrollmentController extends GetxController
 
   // Disability options
   final List<String> disabilityOptions = [
-    'None',
-    'Physical',
-    'Visual',
-    'Hearing',
-    'Mental',
-    'Other'
+    'NO_DISABILITY',
+    'PHYSICAL_DISABILITY',
+    'VISUAL_IMPAIRMENT',
+    'HEARING_IMPAIRMENT',
+    'SPEECH_DISABILITY',
+    'INTELLECTUAL_DISABILITY',
+    'MENTAL_DISORDER',
+    'AUTISM_SPECTRUM_DISORDER',
+    'CEREBRAL_PALSY',
+    'MULTIPLE_SCLEROSIS',
+    'PARKINSONS_DISEASE',
+    'SPINAL_CORD_INJURY',
+    'AMPUTATION',
+    'CHRONIC_NEUROLOGICAL_CONDITION',
+    'OTHER_DISABILITY'
   ];
 
   final _enrollmentScrollController = ScrollController();
@@ -241,8 +252,8 @@ class EnrollmentController extends GetxController
     // Auto-generate CHFID on initialization
     _autoGenerateChfid();
 
-    // Initialize dummy families first, then try to fetch from database
-    initializeDummyFamilies();
+    // Initialize by fetching from database
+    fetchEnrollments(refresh: true);
 
     // Initialize other data asynchronously
     _initializeAsyncData();
@@ -337,18 +348,139 @@ class EnrollmentController extends GetxController
     }
   }
 
-  Future<void> fetchEnrollments() async {
-    try {
-      final dbHelper = DatabaseHelper();
-      final data = await dbHelper.getAllFamiliesWithMembers();
+  // Pagination variables
+  var currentPage = 0.obs;
+  var isLoadingMore = false.obs;
+  var hasMoreData = true.obs;
+  final int pageSize = 20;
 
-      // Always update with database data when explicitly fetching
-      enrollments.value = data;
-      filteredEnrollments.value = data;
-      logger.i("Fetched ${data.length} families from database");
+  Future<void> fetchEnrollments({bool refresh = false}) async {
+    try {
+      if (refresh) {
+        currentPage.value = 0;
+        hasMoreData.value = true;
+        enrollments.clear();
+        filteredEnrollments.clear();
+      }
+
+      if (!hasMoreData.value) return;
+
+      isLoadingMore.value = true;
+      final enhancedDbHelper = EnhancedDatabaseHelper();
+
+      final families = await enhancedDbHelper.getAllFamilies(
+        limit: pageSize,
+        offset: currentPage.value * pageSize,
+        searchQuery: searchText.value.isEmpty ? null : searchText.value,
+        statusFilter:
+            selectedFilter.value == 'All' ? null : selectedFilter.value,
+      );
+
+      if (families.length < pageSize) {
+        hasMoreData.value = false;
+      }
+
+      // Convert FamilyDto to the expected format
+      final convertedFamilies = families
+          .map((family) => {
+                'family': {
+                  'id': family.localId,
+                  'uuid': family.headInsuree?.chfId ?? 'N/A',
+                  'family_type': family.familyTypeId ?? 'H',
+                  'confirmation_type': family.confirmationTypeId ?? 'C',
+                  'confirmation_number': family.confirmationNo ?? '',
+                  'address_detail': family.address ?? '',
+                  'poverty_status': family.poverty ?? false,
+                  'sync': family.syncStatus ?? 0,
+                  'payment_status':
+                      _getPaymentStatusFromSync(family.syncStatus ?? 0),
+                  'enrollment_date': family.createdAt ?? '',
+                  'expiry_date': _calculateExpiryDate(family.createdAt ?? ''),
+                },
+                'members': family.headInsuree != null
+                    ? [
+                        {
+                          'id': family.headInsuree!.localId,
+                          'family_id': family.localId,
+                          'chfid': family.headInsuree!.chfId ?? '',
+                          'name':
+                              '${family.headInsuree!.otherNames ?? ''} ${family.headInsuree!.lastName ?? ''}',
+                          'phone': family.headInsuree!.phone ?? '',
+                          'email': family.headInsuree!.email ?? '',
+                          'gender': family.headInsuree!.genderId == 'M'
+                              ? 'Male'
+                              : 'Female',
+                          'birthdate': family.headInsuree!.dob ?? '',
+                          'marital_status': _getMaritalStatusString(
+                              family.headInsuree!.marital ?? ''),
+                          'relationship': 'Head',
+                          'disability_status':
+                              family.headInsuree!.disabilityStatus ??
+                                  'NO_DISABILITY',
+                          'identification_no':
+                              family.headInsuree!.passport ?? '',
+                          'is_head': true,
+                          'photo_path': family.headInsuree!.photo?.photo,
+                        }
+                      ]
+                    : <Map<String, dynamic>>[],
+              })
+          .toList();
+
+      if (refresh) {
+        enrollments.value = convertedFamilies;
+      } else {
+        enrollments.addAll(convertedFamilies);
+      }
+
+      _applyFilters();
+      currentPage.value++;
+      logger.i(
+          "Fetched ${convertedFamilies.length} families from enhanced database");
     } catch (e) {
       logger.e("Error fetching enrollments", e);
-      // Keep existing data if fetch fails
+      SnackBars.failure('Error', 'Failed to load families: $e');
+    } finally {
+      isLoadingMore.value = false;
+    }
+  }
+
+  String _getPaymentStatusFromSync(int syncStatus) {
+    switch (syncStatus) {
+      case 1:
+        return 'PAID';
+      case 2:
+        return 'FAILED';
+      default:
+        return 'PENDING';
+    }
+  }
+
+  String _getMaritalStatusString(String maritalCode) {
+    switch (maritalCode) {
+      case 'M':
+        return 'Married';
+      case 'S':
+        return 'Single';
+      case 'D':
+        return 'Divorced';
+      case 'W':
+        return 'Widowed';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  String _calculateExpiryDate(String enrollmentDate) {
+    try {
+      final enrollment = DateTime.parse(enrollmentDate);
+      final expiry = enrollment.add(Duration(days: 365));
+      return expiry.toIso8601String().split('T')[0];
+    } catch (e) {
+      return DateTime.now()
+          .add(Duration(days: 365))
+          .toIso8601String()
+          .split('T')[0];
     }
   }
 
@@ -696,6 +828,7 @@ class EnrollmentController extends GetxController
         await Future.delayed(const Duration(seconds: 1));
 
         // Update sync status in database
+        logger.i('Syncing enrollment ID: $enrollmentId');
         // TODO: Implement actual sync logic
       }
 
@@ -713,8 +846,10 @@ class EnrollmentController extends GetxController
       return false;
     }
 
-    if (disabilityStatus.value.isEmpty) {
-      SnackBars.failure("Validation Error", "Please select disability status");
+    if (disabilityStatus.value.isEmpty ||
+        !disabilityOptions.contains(disabilityStatus.value)) {
+      SnackBars.failure(
+          "Validation Error", "Please select a valid disability status");
       return false;
     }
 
@@ -1004,8 +1139,11 @@ class EnrollmentController extends GetxController
 
       if (result.error == false) {
         logger.i("GraphQL family creation successful");
-        SnackBars.success('Success',
-            result.message ?? 'Family created successfully in backend!');
+        SnackBars.success(
+            'Success',
+            result.message.isNotEmpty
+                ? result.message
+                : 'Family created successfully in backend!');
 
         // Don't reset form here since we'll proceed to payment
         // resetForm();
@@ -1128,7 +1266,7 @@ class EnrollmentController extends GetxController
     birthdateController.text = '1999-05-04';
     maritalStatus.value = 'Single';
     relationShip.value = 'Head';
-    disabilityStatus.value = 'None';
+    disabilityStatus.value = 'NO_DISABILITY';
     membershipType.value = 'Paying';
     membershipLevel.value = 'Level 1';
     areaType.value = 'Rural';
@@ -1462,7 +1600,7 @@ class EnrollmentController extends GetxController
     gender.value = '';
     maritalStatus.value = '';
     relationShip.value = '';
-    disabilityStatus.value = 'None';
+    disabilityStatus.value = 'NO_DISABILITY';
     isHead.value = false;
     photo.value = null;
   }
@@ -1937,12 +2075,12 @@ class EnrollmentController extends GetxController
   // Family search and filtering methods
   void searchFamilies(String query) {
     searchText.value = query;
-    _applyFilters();
+    fetchEnrollments(refresh: true); // Fetch fresh data with new search
   }
 
   void setFilter(String filter) {
     selectedFilter.value = filter;
-    _applyFilters();
+    fetchEnrollments(refresh: true); // Fetch fresh data with new filter
   }
 
   void _applyFilters() {
@@ -2332,6 +2470,100 @@ class EnrollmentController extends GetxController
     logger.i("Dummy families initialized: ${dummyFamilies.length} families");
   }
 
+  // Helper methods for the UI
+  void applyFiltersManually() {
+    fetchEnrollments(refresh: true);
+  }
+
+  void resetAndReinitialize() {
+    currentPage.value = 0;
+    hasMoreData.value = true;
+    searchText.value = '';
+    selectedFilter.value = 'All';
+    fetchEnrollments(refresh: true);
+  }
+
+  void loadMoreFamilies() {
+    if (!isLoadingMore.value && hasMoreData.value) {
+      fetchEnrollments(refresh: false);
+    }
+  }
+
+  // Get detailed family data with insurees and policies for detail view
+  Future<Map<String, dynamic>> getFamilyDetailsForView(
+      int localFamilyId) async {
+    try {
+      final enhancedDbHelper = EnhancedDatabaseHelper();
+
+      // Get family details
+      final family = await enhancedDbHelper.getFamilyByLocalId(localFamilyId);
+      if (family == null) {
+        throw Exception('Family not found');
+      }
+
+      // Get all insurees for the family
+      final insurees =
+          await enhancedDbHelper.getInsureesForFamily(localFamilyId);
+
+      // Get policies for the family
+      final policies =
+          await enhancedDbHelper.getPoliciesForFamily(localFamilyId);
+
+      // Get products for display
+      final products = await enhancedDbHelper.getProducts();
+
+      return {
+        'family': family,
+        'insurees': insurees,
+        'policies': policies,
+        'products': products,
+      };
+    } catch (e) {
+      logger.e('Error getting family details: $e');
+      rethrow;
+    }
+  }
+
+  // Check if a member can be added (only disabled or under 18)
+  bool canAddMember(InsureeDto member) {
+    // Check if member has disability
+    if (member.disabilityStatus != null &&
+        member.disabilityStatus != 'NO_DISABILITY') {
+      return true;
+    }
+
+    // Check if member is under 18
+    if (member.dob != null) {
+      try {
+        final birthDate = DateTime.parse(member.dob!);
+        final age = DateTime.now().difference(birthDate).inDays / 365.25;
+        if (age < 18) {
+          return true;
+        }
+      } catch (e) {
+        // If can't parse date, assume not under 18
+      }
+    }
+
+    return false;
+  }
+
+  // Validate new member addition
+  String? validateNewMemberAddition(
+      InsureeDto newMember, List<InsureeDto> existingMembers) {
+    // Check if member can be added according to policy rules
+    if (!canAddMember(newMember)) {
+      return 'Only disabled members or members under 18 years old can be added.';
+    }
+
+    // Check for duplicate CHFID
+    if (existingMembers.any((member) => member.chfId == newMember.chfId)) {
+      return 'A member with this CHFID already exists in the family.';
+    }
+
+    return null; // No validation errors
+  }
+
   // Manual method to reload dummy data for testing
   void reloadDummyData() {
     logger.i("Manually reloading dummy data...");
@@ -2362,30 +2594,6 @@ class EnrollmentController extends GetxController
     filteredEnrollments.refresh();
     isLoading.refresh();
     SnackBars.success("Refresh", "UI refreshed successfully!");
-  }
-
-  // Manually apply filters for debugging
-  void applyFiltersManually() {
-    logger.i("Manually applying filters...");
-    _applyFilters();
-    SnackBars.info("Filters Applied", "Filters applied manually");
-  }
-
-  // Reset everything and reinitialize
-  void resetAndReinitialize() {
-    logger.i("Resetting and reinitializing...");
-
-    // Clear all data
-    enrollments.clear();
-    filteredEnrollments.clear();
-    searchText.value = '';
-    selectedFilter.value = 'All';
-    isLoading.value = false;
-
-    // Reinitialize dummy data
-    initializeDummyFamilies();
-
-    SnackBars.success("Reset Complete", "Data reset and reinitialized!");
   }
 
   @override

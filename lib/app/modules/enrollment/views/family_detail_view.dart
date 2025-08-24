@@ -23,6 +23,8 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
     final mode =
         arguments['mode'] as String; // 'view', 'edit', 'renew', 'amend'
 
+    final localFamilyId = family['family']['id'] as int;
+
     return Scaffold(
       backgroundColor: AppTheme.surfaceColor,
       appBar: AppBar(
@@ -45,48 +47,92 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
             ),
         ],
       ),
-      body: Column(
-        children: [
-          if (mode == 'renew' && showRenewalBanner)
-            _dismissibleBanner(_buildRenewalBanner(), () {
-              setState(() => showRenewalBanner = false);
-            }),
-          if (mode == 'amend') _buildAmendmentBanner(),
-          if (showEnrollmentPeriodBanner)
-            _dismissibleBanner(_buildEnrollmentPeriodCheck(mode), () {
-              setState(() => showEnrollmentPeriodBanner = false);
-            }),
-          Expanded(
-            child: DefaultTabController(
-              length: mode == 'renew' ? 3 : 2,
+      body: FutureBuilder<Map<String, dynamic>>(
+        future: controller.getFamilyDetailsForView(localFamilyId),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  TabBar(
-                    labelColor: Color(0xFF036273),
-                    unselectedLabelColor: Colors.grey,
-                    indicatorColor: Color(0xFF036273),
-                    tabs: [
-                      Tab(text: 'Family Info'),
-                      Tab(text: 'Members'),
-                      if (mode == 'renew') Tab(text: 'Payment'),
-                    ],
+                  CircularProgressIndicator(color: Color(0xFF036273)),
+                  SizedBox(height: 16.h),
+                  Text('Loading family details...'),
+                ],
+              ),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error, size: 64.sp, color: Colors.red),
+                  SizedBox(height: 16.h),
+                  Text(
+                    'Error loading family details',
+                    style:
+                        TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold),
                   ),
-                  Expanded(
-                    child: TabBarView(
-                      children: [
-                        _buildFamilyInfoTab(family, mode),
-                        _buildMembersTab(family, mode),
-                        if (mode == 'renew') _buildPaymentTab(family),
-                      ],
-                    ),
+                  SizedBox(height: 8.h),
+                  Text('${snapshot.error}'),
+                  SizedBox(height: 16.h),
+                  ElevatedButton(
+                    onPressed: () => setState(() {}),
+                    child: Text('Retry'),
                   ),
                 ],
               ),
-            ),
-          ),
-        ],
+            );
+          }
+
+          final familyDetails = snapshot.data!;
+          return Column(
+            children: [
+              if (mode == 'renew' && showRenewalBanner)
+                _dismissibleBanner(_buildRenewalBanner(), () {
+                  setState(() => showRenewalBanner = false);
+                }),
+              if (mode == 'amend') _buildAmendmentBanner(),
+              if (showEnrollmentPeriodBanner)
+                _dismissibleBanner(_buildEnrollmentPeriodCheck(mode), () {
+                  setState(() => showEnrollmentPeriodBanner = false);
+                }),
+              Expanded(
+                child: DefaultTabController(
+                  length: mode == 'renew' ? 3 : 2,
+                  child: Column(
+                    children: [
+                      TabBar(
+                        labelColor: Color(0xFF036273),
+                        unselectedLabelColor: Colors.grey,
+                        indicatorColor: Color(0xFF036273),
+                        tabs: [
+                          Tab(text: 'Family Info'),
+                          Tab(text: 'Members'),
+                          if (mode == 'renew') Tab(text: 'Payment'),
+                        ],
+                      ),
+                      Expanded(
+                        child: TabBarView(
+                          children: [
+                            _buildFamilyInfoTab(familyDetails, mode),
+                            _buildMembersTab(familyDetails, mode),
+                            if (mode == 'renew')
+                              _buildPaymentTab(familyDetails),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (mode != 'view') _buildBottomActions(familyDetails, mode),
+            ],
+          );
+        },
       ),
-      bottomNavigationBar: _buildBottomActions(family, mode),
     );
   }
 
@@ -241,10 +287,14 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
     );
   }
 
-  Widget _buildFamilyInfoTab(Map<String, dynamic> family, String mode) {
-    final familyData = family['family'] as Map<String, dynamic>;
-    final members = family['members'] as List<dynamic>;
-    final headMember = members.firstWhere((m) => m['is_head'] == true);
+  Widget _buildFamilyInfoTab(Map<String, dynamic> familyDetails, String mode) {
+    final family = familyDetails['family'];
+    final insurees = familyDetails['insurees'] as List;
+    final products = familyDetails['products'] as List;
+    final headInsuree = insurees.isNotEmpty
+        ? insurees.firstWhere((i) => i.head == true,
+            orElse: () => insurees.first)
+        : null;
 
     return SingleChildScrollView(
       padding: EdgeInsets.all(16.w),
@@ -254,30 +304,36 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
           _buildSectionCard(
             'Basic Information',
             [
-              _buildInfoRow('CBHI ID', familyData['uuid'], editable: false),
-              _buildInfoRow('Family Type', familyData['family_type'],
+              _buildInfoRow('CBHI ID', headInsuree?.chfId ?? 'N/A',
+                  editable: false),
+              _buildInfoRow('Family Type', family?.familyTypeId ?? 'N/A',
                   editable: mode != 'view'),
-              _buildInfoRow('Address', familyData['address_detail'],
-                  editable: mode != 'view'),
-              _buildInfoRow(
-                  'Confirmation Type', familyData['confirmation_type'],
+              _buildInfoRow('Address', family?.address ?? 'N/A',
                   editable: mode != 'view'),
               _buildInfoRow(
-                  'Confirmation Number', familyData['confirmation_number'],
+                  'Confirmation Type', family?.confirmationTypeId ?? 'N/A',
                   editable: mode != 'view'),
+              _buildInfoRow(
+                  'Confirmation Number', family?.confirmationNo ?? 'N/A',
+                  editable: mode != 'view'),
+              if (headInsuree != null)
+                _buildInfoRow('Head Name',
+                    '${headInsuree.otherNames ?? ''} ${headInsuree.lastName ?? ''}',
+                    editable: false),
+              if (headInsuree != null)
+                _buildInfoRow('Disability Status',
+                    headInsuree.disabilityStatus ?? 'NO_DISABILITY',
+                    editable: false),
             ],
           ),
           SizedBox(height: 16.h),
           _buildSectionCard(
             'Location Information',
             [
-              _buildInfoRow('Region', familyData['region_name'],
+              _buildInfoRow(
+                  'Location ID', family?.locationId?.toString() ?? 'N/A',
                   editable: mode != 'view'),
-              _buildInfoRow('District', familyData['district_name'],
-                  editable: mode != 'view'),
-              _buildInfoRow('Municipality', familyData['municipality_name'],
-                  editable: mode != 'view'),
-              _buildInfoRow('Village', familyData['village_name'],
+              _buildInfoRow('JSON Extensions', family?.jsonExt ?? '{}',
                   editable: mode != 'view'),
             ],
           ),
@@ -285,43 +341,57 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
           _buildSectionCard(
             'Membership Details',
             [
-              _buildInfoRow('Membership Type', familyData['membership_type'],
-                  editable: mode == 'renew'),
-              _buildInfoRow('Membership Level', familyData['membership_level'],
-                  editable: mode == 'renew'),
-              _buildInfoRow('Area Type', familyData['area_type'],
+              _buildInfoRow(
+                  'Poverty Status', family?.poverty == true ? 'Yes' : 'No',
                   editable: mode == 'renew'),
               _buildInfoRow(
-                  'Poverty Status', familyData['poverty_status'] ? 'Yes' : 'No',
-                  editable: mode == 'renew'),
-              _buildInfoRow('Calculated Contribution',
-                  '${familyData['calculated_contribution']} ETB',
+                  'Sync Status', _getSyncStatusText(family?.syncStatus ?? 0),
+                  editable: false),
+              _buildInfoRow('Created', family?.createdAt ?? 'N/A',
                   editable: false),
             ],
           ),
+          if (products.isNotEmpty) ...[
+            SizedBox(height: 16.h),
+            _buildSectionCard(
+              'Available Products',
+              products
+                  .map<Widget>((product) => _buildProductRow(product))
+                  .toList(),
+            ),
+          ],
           SizedBox(height: 16.h),
-          _buildSectionCard(
-            'Head of Family',
-            [
-              _buildInfoRow('Name', headMember['name'],
-                  editable: mode != 'view'),
-              _buildInfoRow('Gender', headMember['gender'],
-                  editable: mode != 'view'),
-              _buildInfoRow('Birth Date', headMember['birthdate'],
-                  editable: mode != 'view'),
-              _buildInfoRow('Phone', headMember['phone'],
-                  editable: mode != 'view'),
-              _buildInfoRow('Email', headMember['email'],
-                  editable: mode != 'view'),
-              _buildInfoRow('Marital Status', headMember['marital_status'],
-                  editable: mode != 'view'),
-              _buildInfoRow(
-                  'Disability Status', headMember['disability_status'],
-                  editable: mode != 'view'),
-              _buildInfoRow('ID Number', headMember['identification_no'],
-                  editable: mode != 'view'),
-            ],
-          ),
+          if (headInsuree != null)
+            _buildSectionCard(
+              'Head of Family',
+              [
+                _buildInfoRow('Name',
+                    '${headInsuree.otherNames ?? ''} ${headInsuree.lastName ?? ''}',
+                    editable: mode != 'view'),
+                _buildInfoRow(
+                    'Gender',
+                    headInsuree.genderId == 'M'
+                        ? 'Male'
+                        : headInsuree.genderId == 'F'
+                            ? 'Female'
+                            : 'N/A',
+                    editable: mode != 'view'),
+                _buildInfoRow('Birth Date', headInsuree.dob ?? 'N/A',
+                    editable: mode != 'view'),
+                _buildInfoRow('Phone', headInsuree.phone ?? 'N/A',
+                    editable: mode != 'view'),
+                _buildInfoRow('Email', headInsuree.email ?? 'N/A',
+                    editable: mode != 'view'),
+                _buildInfoRow('Marital Status',
+                    _getMaritalStatusString(headInsuree.marital ?? ''),
+                    editable: mode != 'view'),
+                _buildInfoRow('Disability Status',
+                    headInsuree.disabilityStatus ?? 'NO_DISABILITY',
+                    editable: mode != 'view'),
+                _buildInfoRow('ID Number', headInsuree.passport ?? 'N/A',
+                    editable: mode != 'view'),
+              ],
+            ),
           if (mode != 'view')
             SizedBox(height: 100.h), // Space for bottom actions
         ],
@@ -329,8 +399,8 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
     );
   }
 
-  Widget _buildMembersTab(Map<String, dynamic> family, String mode) {
-    final members = family['members'] as List<dynamic>;
+  Widget _buildMembersTab(Map<String, dynamic> familyDetails, String mode) {
+    final insurees = familyDetails['insurees'] as List;
 
     return Column(
       children: [
@@ -341,7 +411,7 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => _addNewMember(family),
+                    onPressed: () => _addNewMember(familyDetails),
                     icon: Icon(Icons.person_add),
                     label: Text('Add New Member'),
                     style: ElevatedButton.styleFrom(
@@ -356,10 +426,10 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
         Expanded(
           child: ListView.builder(
             padding: EdgeInsets.symmetric(horizontal: 16.w),
-            itemCount: members.length,
+            itemCount: insurees.length,
             itemBuilder: (context, index) {
-              final member = members[index];
-              return _buildMemberCard(member, mode, index);
+              final insuree = insurees[index];
+              return _buildMemberCard(insuree, mode, index);
             },
           ),
         ),
@@ -1006,6 +1076,79 @@ class _FamilyDetailViewState extends State<FamilyDetailView> {
             child: Text('Pay $amount ETB'),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
           ),
+        ],
+      ),
+    );
+  }
+
+  String _getSyncStatusText(int syncStatus) {
+    switch (syncStatus) {
+      case 0:
+        return 'Pending';
+      case 1:
+        return 'Synced';
+      case 2:
+        return 'Failed';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  String _getMaritalStatusString(String maritalCode) {
+    switch (maritalCode) {
+      case 'M':
+        return 'Married';
+      case 'S':
+        return 'Single';
+      case 'D':
+        return 'Divorced';
+      case 'W':
+        return 'Widowed';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  Widget _buildProductRow(Map<String, dynamic> product) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 8.h),
+      padding: EdgeInsets.all(12.w),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey[300]!),
+        borderRadius: BorderRadius.circular(8.r),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            product['name'] ?? 'Unknown Product',
+            style: TextStyle(
+              fontSize: 16.sp,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF036273),
+            ),
+          ),
+          if (product['code'] != null) ...[
+            SizedBox(height: 4.h),
+            Text(
+              'Code: ${product['code']}',
+              style: TextStyle(fontSize: 14.sp, color: Colors.grey[600]),
+            ),
+          ],
+          if (product['premium_adult'] != null) ...[
+            SizedBox(height: 4.h),
+            Text(
+              'Premium (Adult): ${product['premium_adult']} ETB',
+              style: TextStyle(fontSize: 14.sp, color: Colors.grey[800]),
+            ),
+          ],
+          if (product['lump_sum'] != null) ...[
+            SizedBox(height: 4.h),
+            Text(
+              'Lump Sum: ${product['lump_sum']} ETB',
+              style: TextStyle(fontSize: 14.sp, color: Colors.grey[800]),
+            ),
+          ],
         ],
       ),
     );

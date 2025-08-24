@@ -21,6 +21,7 @@ class InsureeDto implements IDto {
     this.familyId,
     this.relationshipId,
     this.status,
+    this.disabilityStatus,
     this.jsonExt,
     this.syncStatus,
     this.localFamilyId,
@@ -49,6 +50,7 @@ class InsureeDto implements IDto {
     familyId = json['familyId'];
     relationshipId = json['relationshipId'];
     status = json['status'];
+    disabilityStatus = json['disabilityStatus'];
     jsonExt = json['jsonExt'];
     syncStatus = json['syncStatus'] ?? 0;
     localFamilyId = json['localFamilyId'];
@@ -76,6 +78,7 @@ class InsureeDto implements IDto {
   int? familyId; // Remote family ID after sync
   int? relationshipId;
   String? status; // AC (Active)
+  String? disabilityStatus; // Disability status from the 15-item list
   String? jsonExt;
   int? syncStatus; // 0 = pending, 1 = synced, 2 = failed
   int? localFamilyId; // Local family ID before sync
@@ -103,6 +106,7 @@ class InsureeDto implements IDto {
     int? familyId,
     int? relationshipId,
     String? status,
+    String? disabilityStatus,
     String? jsonExt,
     int? syncStatus,
     int? localFamilyId,
@@ -130,6 +134,7 @@ class InsureeDto implements IDto {
         familyId: familyId ?? this.familyId,
         relationshipId: relationshipId ?? this.relationshipId,
         status: status ?? this.status,
+        disabilityStatus: disabilityStatus ?? this.disabilityStatus,
         jsonExt: jsonExt ?? this.jsonExt,
         syncStatus: syncStatus ?? this.syncStatus,
         localFamilyId: localFamilyId ?? this.localFamilyId,
@@ -161,6 +166,7 @@ class InsureeDto implements IDto {
     map['familyId'] = familyId;
     map['relationshipId'] = relationshipId;
     map['status'] = status;
+    map['disabilityStatus'] = disabilityStatus;
     map['jsonExt'] = jsonExt;
     map['syncStatus'] = syncStatus;
     map['localFamilyId'] = localFamilyId;

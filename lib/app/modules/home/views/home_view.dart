@@ -96,10 +96,11 @@ class HomeView extends GetView<HomeController> {
                   childAspectRatio: 1.1,
                   children: [
                     _buildActionCard(
-                      title: 'New Family\nRegistration',
+                      title: 'Family\nEnrollment',
                       icon: HeroIcons.userGroup,
                       color: Color(0xFF036273),
-                      onTap: () => Get.toNamed('/enhanced-enrollment'),
+                      onTap: () => Get.toNamed('/enrollment-list',
+                          arguments: {'action': 'enroll'}),
                     ),
                     _buildActionCard(
                       title: 'Family\nRecords',
@@ -108,10 +109,18 @@ class HomeView extends GetView<HomeController> {
                       onTap: () => Get.toNamed('/enrollment-list'),
                     ),
                     _buildActionCard(
-                      title: 'Membership\nRenewal',
+                      title: 'Amend\nFamily',
+                      icon: HeroIcons.pencilSquare,
+                      color: Color(0xFF036273).withOpacity(0.9),
+                      onTap: () => Get.toNamed('/enrollment-list',
+                          arguments: {'action': 'amend'}),
+                    ),
+                    _buildActionCard(
+                      title: 'Renewal',
                       icon: HeroIcons.arrowPathRoundedSquare,
                       color: Color(0xFF036273).withOpacity(0.8),
-                      onTap: () => _showComingSoonDialog('Membership Renewal'),
+                      onTap: () => Get.toNamed('/enrollment-list',
+                          arguments: {'action': 'renew'}),
                     ),
                     _buildActionCard(
                       title: 'Sync\nStatus',

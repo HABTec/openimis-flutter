@@ -377,6 +377,34 @@ class SettingsView extends GetView<SettingsController> {
 
             SizedBox(height: 12.h),
 
+            // Database dump button
+            SizedBox(
+              width: double.infinity,
+              child: Obx(() => OutlinedButton.icon(
+                    onPressed: controller.isLoading.value ||
+                            controller.isDumpingDb.value
+                        ? null
+                        : () => _showDatabaseDumpDialog(),
+                    icon: controller.isDumpingDb.value
+                        ? SizedBox(
+                            width: 16.w,
+                            height: 16.h,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(Icons.backup),
+                    label: Text(controller.isDumpingDb.value
+                        ? 'Generating Dump...'
+                        : 'Export Database Dump'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.purple,
+                      side: BorderSide(color: Colors.purple),
+                      padding: EdgeInsets.symmetric(vertical: 12.h),
+                    ),
+                  )),
+            ),
+
+            SizedBox(height: 12.h),
+
             // Clear app data button
             SizedBox(
               width: double.infinity,
@@ -566,6 +594,133 @@ class SettingsView extends GetView<SettingsController> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showDatabaseDumpDialog() {
+    Get.dialog(
+      AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16.r),
+        ),
+        title: Row(
+          children: [
+            Icon(
+              Icons.backup,
+              color: Colors.purple,
+              size: 24.w,
+            ),
+            SizedBox(width: 8.w),
+            Text(
+              'Export Database Dump',
+              style: TextStyle(
+                fontSize: 18.sp,
+                fontWeight: FontWeight.bold,
+                color: Colors.purple,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This will export all database content including:',
+              style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w500),
+            ),
+            SizedBox(height: 12.h),
+            _buildDumpFeatureItem('Family and member data'),
+            _buildDumpFeatureItem('Configuration settings'),
+            _buildDumpFeatureItem('Application preferences'),
+            _buildDumpFeatureItem('Database schemas and metadata'),
+            SizedBox(height: 16.h),
+            Container(
+              padding: EdgeInsets.all(12.w),
+              decoration: BoxDecoration(
+                color: Colors.amber.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8.r),
+                border: Border.all(color: Colors.amber.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline,
+                      color: Colors.amber[700], size: 20.w),
+                  SizedBox(width: 8.w),
+                  Expanded(
+                    child: Text(
+                      'The dump will be saved as a JSON file that you can share for analysis.',
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        color: Colors.amber[700],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Get.back();
+              controller.exportDatabaseDump();
+            },
+            icon: Icon(Icons.file_download),
+            label: Text('Export'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.purple,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDumpFeatureItem(String text) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 2.h),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_circle_outline,
+            color: Colors.green,
+            size: 16.w,
+          ),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 14.sp,
+                color: Colors.grey[700],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDbStatItem(String text) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 1.h),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 12.sp,
+          color: Colors.blue[600],
+        ),
       ),
     );
   }

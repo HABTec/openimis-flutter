@@ -2,8 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:dio/dio.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:convert';
+import 'dart:io';
 import '../../../data/remote/api/dio_client.dart';
 import '../../../di/locator.dart';
+import '../../../utils/database_helper.dart';
+import '../../../utils/enhanced_database_helper.dart';
+import '../../../utils/public_database_helper.dart';
 
 class SettingsController extends GetxController {
   final GetStorage _storage = GetStorage();
@@ -15,6 +24,7 @@ class SettingsController extends GetxController {
   // Observable variables
   var isLoading = false.obs;
   var baseUrl = ''.obs;
+  var isDumpingDb = false.obs;
 
   // Default URLs for quick selection
   final List<Map<String, String>> predefinedUrls = [
@@ -253,4 +263,304 @@ class SettingsController extends GetxController {
 
   /// Get current base URL for display
   String get currentBaseUrl => baseUrl.value;
+
+  /// Generate and export database dump
+  Future<void> exportDatabaseDump() async {
+    try {
+      isDumpingDb.value = true;
+
+      // Request storage permission
+      var status = await Permission.storage.status;
+      if (!status.isGranted) {
+        status = await Permission.storage.request();
+        if (!status.isGranted) {
+          Get.snackbar(
+            'Permission Denied',
+            'Storage permission is required to export database dump',
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+          );
+          return;
+        }
+      }
+
+      Get.snackbar(
+        'Generating Dump',
+        'Please wait while we generate the database dump...',
+        backgroundColor: Colors.blue,
+        colorText: Colors.white,
+        duration: Duration(seconds: 3),
+      );
+
+      // Generate comprehensive database dump
+      final dumpData = await _generateDatabaseDump();
+
+      // Save to temporary file
+      final directory = await getTemporaryDirectory();
+      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+      final fileName = 'openimis_db_dump_$timestamp.json';
+      final file = File('${directory.path}/$fileName');
+
+      await file.writeAsString(jsonEncode(dumpData));
+
+      Get.snackbar(
+        'Dump Generated',
+        'Database dump saved as $fileName',
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+      );
+
+      // Share the file
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'OpenIMIS Database Dump - $timestamp',
+        subject: 'Database Dump Export',
+      );
+    } catch (e) {
+      print('Error exporting database dump: $e');
+      Get.snackbar(
+        'Export Failed',
+        'Failed to export database dump: $e',
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+        duration: Duration(seconds: 5),
+      );
+    } finally {
+      isDumpingDb.value = false;
+    }
+  }
+
+  /// Generate comprehensive database dump
+  Future<Map<String, dynamic>> _generateDatabaseDump() async {
+    final dumpData = <String, dynamic>{
+      'export_info': {
+        'timestamp': DateTime.now().toIso8601String(),
+        'app_version': appInfo,
+        'base_url': currentBaseUrl,
+        'device_info': await _getDeviceInfo(),
+      },
+      'databases': {},
+    };
+
+    try {
+      // Dump main enrollment database
+      final mainDbHelper = DatabaseHelper();
+      final mainDb = await mainDbHelper.database;
+      dumpData['databases']['main_enrollment'] = await _dumpDatabase(
+        mainDb,
+        'family_enrollment.db',
+        ['family', 'members', 'contribution_config'],
+      );
+    } catch (e) {
+      print('Error dumping main database: $e');
+      dumpData['databases']['main_enrollment'] = {'error': e.toString()};
+    }
+
+    try {
+      // Dump enhanced enrollment database
+      final enhancedDbHelper = EnhancedDatabaseHelper();
+      final enhancedDb = await enhancedDbHelper.database;
+      dumpData['databases']['enhanced_enrollment'] = await _dumpDatabase(
+        enhancedDb,
+        'enhanced_enrollment1.db',
+        [
+          'professions',
+          'educations',
+          'relations',
+          'family_types',
+          'confirmation_types',
+          'locations',
+          'families',
+          'insurees',
+          'products',
+          'membership_types',
+          'policies'
+        ],
+      );
+    } catch (e) {
+      print('Error dumping enhanced database: $e');
+      dumpData['databases']['enhanced_enrollment'] = {'error': e.toString()};
+    }
+
+    try {
+      // Dump public enrollment database
+      final publicDbHelper = PublicDatabaseHelper();
+      final publicDb = await publicDbHelper.database;
+      dumpData['databases']['public_enrollment'] = await _dumpDatabase(
+        publicDb,
+        'public_enrollment.db',
+        ['family', 'members'],
+      );
+    } catch (e) {
+      print('Error dumping public database: $e');
+      dumpData['databases']['public_enrollment'] = {'error': e.toString()};
+    }
+
+    // Add storage data
+    try {
+      dumpData['storage'] = await _dumpStorageData();
+    } catch (e) {
+      print('Error dumping storage data: $e');
+      dumpData['storage'] = {'error': e.toString()};
+    }
+
+    return dumpData;
+  }
+
+  /// Dump specific database tables
+  Future<Map<String, dynamic>> _dumpDatabase(
+    Database db,
+    String dbName,
+    List<String> tableNames,
+  ) async {
+    final dbDump = <String, dynamic>{
+      'database_name': dbName,
+      'tables': {},
+      'metadata': {
+        'version': await db.getVersion(),
+        'path': db.path,
+        'export_time': DateTime.now().toIso8601String(),
+      },
+    };
+
+    for (final tableName in tableNames) {
+      try {
+        // Check if table exists
+        final tableInfo = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='$tableName'",
+        );
+
+        if (tableInfo.isEmpty) {
+          dbDump['tables'][tableName] = {
+            'error': 'Table does not exist',
+            'data': [],
+            'count': 0,
+          };
+          continue;
+        }
+
+        // Get table schema
+        final schema = await db.rawQuery('PRAGMA table_info($tableName)');
+
+        // Get table data
+        final data = await db.query(tableName);
+
+        // Get table statistics
+        final count =
+            await db.rawQuery('SELECT COUNT(*) as count FROM $tableName');
+        final rowCount = count.first['count'] as int;
+
+        dbDump['tables'][tableName] = {
+          'schema': schema,
+          'data': data,
+          'count': rowCount,
+          'export_time': DateTime.now().toIso8601String(),
+        };
+
+        print('Dumped table $tableName: $rowCount rows');
+      } catch (e) {
+        print('Error dumping table $tableName: $e');
+        dbDump['tables'][tableName] = {
+          'error': e.toString(),
+          'data': [],
+          'count': 0,
+        };
+      }
+    }
+
+    return dbDump;
+  }
+
+  /// Dump GetStorage data
+  Future<Map<String, dynamic>> _dumpStorageData() async {
+    final storageData = <String, dynamic>{};
+
+    // Common storage keys to dump
+    final keysToCheck = [
+      'baseUrl',
+      'token',
+      'user_data',
+      'last_sync',
+      'config_last_sync',
+      'app_config',
+      'language',
+      'theme',
+      'offline_mode',
+    ];
+
+    for (final key in keysToCheck) {
+      try {
+        final value = _storage.read(key);
+        if (value != null) {
+          storageData[key] = value;
+        }
+      } catch (e) {
+        storageData[key] = {'error': e.toString()};
+      }
+    }
+
+    // Get all storage keys
+    try {
+      final allKeys = _storage.getKeys();
+      storageData['_all_keys'] = allKeys.toList();
+    } catch (e) {
+      storageData['_all_keys'] = {'error': e.toString()};
+    }
+
+    return storageData;
+  }
+
+  /// Get basic device information
+  Future<Map<String, dynamic>> _getDeviceInfo() async {
+    return {
+      'platform': Platform.operatingSystem,
+      'version': Platform.operatingSystemVersion,
+      'dart_version': Platform.version,
+      'environment':
+          Platform.environment.keys.take(5).toList(), // Limited for privacy
+    };
+  }
+
+  /// Get database statistics for display
+  Future<Map<String, dynamic>> getDatabaseStats() async {
+    final stats = <String, dynamic>{};
+
+    try {
+      final mainDbHelper = DatabaseHelper();
+      final mainDb = await mainDbHelper.database;
+
+      final familyCount =
+          await mainDb.rawQuery('SELECT COUNT(*) as count FROM family');
+      final memberCount =
+          await mainDb.rawQuery('SELECT COUNT(*) as count FROM members');
+
+      stats['main_database'] = {
+        'families': familyCount.first['count'],
+        'members': memberCount.first['count'],
+        'path': mainDb.path,
+      };
+    } catch (e) {
+      stats['main_database'] = {'error': e.toString()};
+    }
+
+    try {
+      final enhancedDbHelper = EnhancedDatabaseHelper();
+      final enhancedDb = await enhancedDbHelper.database;
+
+      final enhancedFamilyCount =
+          await enhancedDb.rawQuery('SELECT COUNT(*) as count FROM families');
+      final enhancedInsureeCount =
+          await enhancedDb.rawQuery('SELECT COUNT(*) as count FROM insurees');
+
+      stats['enhanced_database'] = {
+        'families': enhancedFamilyCount.first['count'],
+        'insurees': enhancedInsureeCount.first['count'],
+        'path': enhancedDb.path,
+      };
+    } catch (e) {
+      stats['enhanced_database'] = {'error': e.toString()};
+    }
+
+    return stats;
+  }
 }

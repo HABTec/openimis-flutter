@@ -19,8 +19,12 @@ class EnhancedDatabaseHelper {
   EnhancedDatabaseHelper._internal();
 
   Future<Database> get database async {
-    if (_database != null) return _database!;
+    if (_database != null) {
+      print('Database initialized');
+      return _database!;
+    }
     _database = await _initDB();
+
     return _database!;
   }
 
@@ -103,6 +107,7 @@ class EnhancedDatabaseHelper {
         location_id INTEGER,
         poverty INTEGER DEFAULT 0,
         family_type_id TEXT DEFAULT 'H',
+        disability_status TEXT DEFAULT 'NO_DISABILITY',
         address TEXT,
         confirmation_type_id TEXT DEFAULT 'A',
         confirmation_no TEXT,
@@ -142,6 +147,7 @@ class EnhancedDatabaseHelper {
         remote_family_id INTEGER,
         relationship_id INTEGER,
         status TEXT DEFAULT 'AC',
+        disability_status TEXT DEFAULT 'NO_DISABILITY',
         json_ext TEXT DEFAULT '{}',
         sync_status INTEGER DEFAULT 0,
         sync_error TEXT,
@@ -675,6 +681,7 @@ class EnhancedDatabaseHelper {
           educationId: map['head_education_id'] as int?,
           typeOfIdId: map['head_type_of_id_id'] as String?,
           status: map['head_status'] as String?,
+          disabilityStatus: map['head_disability_status'] as String?,
           jsonExt: map['head_json_ext'] as String?,
         );
       }
@@ -695,7 +702,7 @@ class EnhancedDatabaseHelper {
              i.photo_date as head_photo_date, i.card_issued as head_card_issued,
              i.profession_id as head_profession_id, i.education_id as head_education_id,
              i.type_of_id_id as head_type_of_id_id, i.status as head_status,
-             i.json_ext as head_json_ext
+             i.disability_status as head_disability_status, i.json_ext as head_json_ext
       FROM families f
       LEFT JOIN insurees i ON f.local_id = i.local_family_id AND i.head = 1
       WHERE f.sync_status = ?
@@ -742,6 +749,7 @@ class EnhancedDatabaseHelper {
           educationId: map['head_education_id'] as int?,
           typeOfIdId: map['head_type_of_id_id'] as String?,
           status: map['head_status'] as String?,
+          disabilityStatus: map['head_disability_status'] as String?,
           jsonExt: map['head_json_ext'] as String?,
         );
       }
@@ -1082,5 +1090,205 @@ class EnhancedDatabaseHelper {
       'insurees_synced': insureeStats.first['synced'] as int,
       'insurees_failed': insureeStats.first['failed'] as int,
     };
+  }
+
+  // Get all families with pagination
+  Future<List<FamilyDto>> getAllFamilies({
+    int? limit = 20,
+    int? offset = 0,
+    String? searchQuery,
+    String? statusFilter,
+  }) async {
+    final db = await database;
+    String whereClause = '';
+    List<dynamic> whereArgs = [];
+
+    if (searchQuery != null && searchQuery.isNotEmpty) {
+      whereClause = '''
+        WHERE (i.chf_id LIKE ? OR 
+               i.last_name LIKE ? OR 
+               i.other_names LIKE ? OR 
+               i.phone LIKE ?)
+      ''';
+      final searchPattern = '%$searchQuery%';
+      whereArgs
+          .addAll([searchPattern, searchPattern, searchPattern, searchPattern]);
+    }
+
+    if (statusFilter != null &&
+        statusFilter.isNotEmpty &&
+        statusFilter != 'All') {
+      String statusCondition = '';
+      switch (statusFilter) {
+        case 'Active':
+          statusCondition = 'f.sync_status = 1';
+          break;
+        case 'Pending Payment':
+          statusCondition = 'f.sync_status = 0';
+          break;
+        case 'Failed':
+          statusCondition = 'f.sync_status = 2';
+          break;
+      }
+
+      if (statusCondition.isNotEmpty) {
+        if (whereClause.isNotEmpty) {
+          whereClause += ' AND $statusCondition';
+        } else {
+          whereClause = 'WHERE $statusCondition';
+        }
+      }
+    }
+
+    final results = await db.rawQuery('''
+      SELECT f.*, 
+             i.local_id as head_local_id, i.chf_id as head_chf_id, 
+             i.last_name as head_last_name, i.other_names as head_other_names,
+             i.gender_id as head_gender_id, i.dob as head_dob, i.marital as head_marital,
+             i.passport as head_passport, i.phone as head_phone, i.email as head_email,
+             i.photo_data as head_photo_data, i.photo_officer_id as head_photo_officer_id,
+             i.photo_date as head_photo_date, i.card_issued as head_card_issued,
+             i.profession_id as head_profession_id, i.education_id as head_education_id,
+             i.type_of_id_id as head_type_of_id_id, i.status as head_status,
+             i.disability_status as head_disability_status, i.json_ext as head_json_ext
+      FROM families f
+      LEFT JOIN insurees i ON f.local_id = i.local_family_id AND i.head = 1
+      $whereClause
+      ORDER BY f.updated_at DESC
+      LIMIT ? OFFSET ?
+    ''', [...whereArgs, limit, offset]);
+
+    return results.map((map) {
+      final family = FamilyDto(
+        localId: map['local_id'] as int?,
+        locationId: map['location_id'] as int?,
+        poverty: (map['poverty'] as int?) == 1,
+        familyTypeId: map['family_type_id'] as String?,
+        address: map['address'] as String?,
+        confirmationTypeId: map['confirmation_type_id'] as String?,
+        confirmationNo: map['confirmation_no'] as String?,
+        jsonExt: map['json_ext'] as String?,
+        syncStatus: map['sync_status'] as int?,
+        createdAt: map['created_at'] as String?,
+        updatedAt: map['updated_at'] as String?,
+      );
+
+      if (map['head_local_id'] != null) {
+        family.headInsuree = InsureeDto(
+          localId: map['head_local_id'] as int?,
+          chfId: map['head_chf_id'] as String?,
+          lastName: map['head_last_name'] as String?,
+          otherNames: map['head_other_names'] as String?,
+          genderId: map['head_gender_id'] as String?,
+          dob: map['head_dob'] as String?,
+          head: true,
+          marital: map['head_marital'] as String?,
+          passport: map['head_passport'] as String?,
+          phone: map['head_phone'] as String?,
+          email: map['head_email'] as String?,
+          photo: map['head_photo_data'] != null
+              ? PhotoDto(
+                  photo: map['head_photo_data'] as String?,
+                  officerId: map['head_photo_officer_id'] as int?,
+                  date: map['head_photo_date'] as String?,
+                )
+              : null,
+          cardIssued: (map['head_card_issued'] as int?) == 1,
+          professionId: map['head_profession_id'] as int?,
+          educationId: map['head_education_id'] as int?,
+          typeOfIdId: map['head_type_of_id_id'] as String?,
+          status: map['head_status'] as String?,
+          disabilityStatus: map['head_disability_status'] as String?,
+          jsonExt: map['head_json_ext'] as String?,
+        );
+      }
+
+      return family;
+    }).toList();
+  }
+
+  // Get insurees for a specific family
+  Future<List<InsureeDto>> getInsureesForFamily(int localFamilyId) async {
+    final db = await database;
+    final results = await db.query(
+      'insurees',
+      where: 'local_family_id = ?',
+      whereArgs: [localFamilyId],
+      orderBy: 'head DESC, created_at ASC',
+    );
+
+    return results
+        .map((map) => InsureeDto(
+              localId: map['local_id'] as int?,
+              chfId: map['chf_id'] as String?,
+              lastName: map['last_name'] as String?,
+              otherNames: map['other_names'] as String?,
+              genderId: map['gender_id'] as String?,
+              dob: map['dob'] as String?,
+              head: (map['head'] as int?) == 1,
+              marital: map['marital'] as String?,
+              passport: map['passport'] as String?,
+              phone: map['phone'] as String?,
+              email: map['email'] as String?,
+              photo: map['photo_data'] != null
+                  ? PhotoDto(
+                      photo: map['photo_data'] as String?,
+                      officerId: map['photo_officer_id'] as int?,
+                      date: map['photo_date'] as String?,
+                    )
+                  : null,
+              cardIssued: (map['card_issued'] as int?) == 1,
+              professionId: map['profession_id'] as int?,
+              educationId: map['education_id'] as int?,
+              typeOfIdId: map['type_of_id_id'] as String?,
+              localFamilyId: map['local_family_id'] as int?,
+              familyId: map['remote_family_id'] as int?,
+              relationshipId: map['relationship_id'] as int?,
+              status: map['status'] as String?,
+              disabilityStatus: map['disability_status'] as String?,
+              jsonExt: map['json_ext'] as String?,
+              syncStatus: map['sync_status'] as int?,
+              createdAt: map['created_at'] as String?,
+              updatedAt: map['updated_at'] as String?,
+            ))
+        .toList();
+  }
+
+  // Get policies for a specific family
+  Future<List<Map<String, dynamic>>> getPoliciesForFamily(
+      int localFamilyId) async {
+    final db = await database;
+    final results = await db.rawQuery('''
+      SELECT p.*, pr.name as product_name, pr.code as product_code
+      FROM policies p
+      LEFT JOIN products pr ON p.product_id = pr.id
+      WHERE p.family_id = ?
+      ORDER BY p.created_at DESC
+    ''', [localFamilyId]);
+
+    return results
+        .map((map) => {
+              'local_id': map['local_id'],
+              'enroll_date': map['enroll_date'],
+              'start_date': map['start_date'],
+              'expiry_date': map['expiry_date'],
+              'value': map['value'],
+              'product_id': map['product_id'],
+              'product_name': map['product_name'],
+              'product_code': map['product_code'],
+              'family_id': map['family_id'],
+              'officer_id': map['officer_id'],
+              'uuid': map['uuid'],
+              'sync_status': map['sync_status'],
+              'remote_policy_id': map['remote_policy_id'],
+              'sync_error': map['sync_error'],
+            })
+        .toList();
+  }
+
+  // Get products available in the system
+  Future<List<Map<String, dynamic>>> getProducts() async {
+    final db = await database;
+    return await db.query('products', orderBy: 'name');
   }
 }

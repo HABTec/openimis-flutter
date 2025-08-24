@@ -87,7 +87,11 @@ class AppPages {
     ),
     GetPage(
       name: _Paths.ENROLLMENT_LIST,
-      page: () => const EnrollmentListView(),
+      page: () {
+        final arguments = Get.arguments as Map<String, dynamic>?;
+        final actionMode = arguments?['action'] as String?;
+        return EnrollmentListView(actionMode: actionMode);
+      },
       binding: EnrollmentBindings(),
     ),
     GetPage(
